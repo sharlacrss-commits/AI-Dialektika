@@ -1,0 +1,59 @@
+@import "tailwindcss";
+
+@theme {
+  --color-bg: #ffffff;
+  --color-bg-soft: #f0fdfa;
+  --color-accent-soft: #ccfbf1;
+  --color-primary: #14b8a6;
+  --color-primary-press: #0f766e;
+  --color-ink: #1f2937;
+  --color-muted: #6b7280;
+  --color-coral: #fb7185;
+  --color-success-soft: #d1fae5;
+  --color-success-ink: #047857;
+  --color-warning-soft: #fef3c7;
+  --color-warning-ink: #b45309;
+  --color-line: #e5e7eb;
+
+  --font-display: var(--font-poppins);
+  --font-sans: var(--font-inter);
+
+  --radius-xl2: 1.25rem;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background: var(--color-bg-soft);
+  color: var(--color-ink);
+  font-family: var(--font-sans), system-ui, sans-serif;
+}
+
+h1,
+h2,
+h3,
+.font-display {
+  font-family: var(--font-display), system-ui, sans-serif;
+}
+
+/* Indikator "Dialektika sedang berpikir" */
+@keyframes dot-bounce {
+  0%, 80%, 100% { transform: translateY(0); opacity: 0.4; }
+  40% { transform: translateY(-4px); opacity: 1; }
+}
+.thinking-dot {
+  animation: dot-bounce 1.2s infinite ease-in-out;
+}
+.thinking-dot:nth-child(2) { animation-delay: 0.15s; }
+.thinking-dot:nth-child(3) { animation-delay: 0.3s; }
+
+/* Bayangan bernuansa tosca, bukan hitam */
+.shadow-tosca {
+  box-shadow: 0 4px 16px rgba(20, 184, 166, 0.1);
+}
+.shadow-tosca-sm {
+  box-shadow: 0 2px 8px rgba(20, 184, 166, 0.08);
+}

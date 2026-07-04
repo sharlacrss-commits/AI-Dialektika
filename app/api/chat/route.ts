@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { openrouterChat, type ORMessage } from "@/lib/openrouter";
+import { sumopodChat, type ChatMessage } from "@/lib/sumopod";
 import { SYSTEM_DISKUSI, kickoffPrompt } from "@/lib/prompts";
 
 export const runtime = "nodejs";
@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
     .eq("session_id", sessionId)
     .order("created_at", { ascending: true });
 
-  const messages: ORMessage[] = [{ role: "system", content: SYSTEM_DISKUSI }];
+  const messages: ChatMessage[] = [{ role: "system", content: SYSTEM_DISKUSI }];
   for (const m of history ?? []) {
     messages.push({
       role: m.peran === "user" ? "user" : "assistant",
@@ -61,15 +61,15 @@ export async function POST(req: NextRequest) {
     ? [setting.chat_model, setting.fallback_model]
     : undefined;
 
-  const orRes = await openrouterChat({ messages, stream: true, models });
-  if (!orRes.ok || !orRes.body) {
-    const detail = await orRes.text().catch(() => "");
+  const aiRes = await sumopodChat({ messages, stream: true, models });
+  if (!aiRes.ok || !aiRes.body) {
+    const detail = await aiRes.text().catch(() => "");
     return new Response("AI tidak merespons. " + detail, { status: 502 });
   }
 
   const encoder = new TextEncoder();
   const decoder = new TextDecoder();
-  const reader = orRes.body.getReader();
+  const reader = aiRes.body.getReader();
   let full = "";
   let buffer = "";
 
@@ -99,7 +99,7 @@ export async function POST(req: NextRequest) {
         try {
           const json = JSON.parse(data);
           if (json.error) {
-            // OpenRouter mengirim error di tengah stream (mis. model habis/limit)
+            // Sumopod bisa mengirim error di tengah stream (mis. kuota habis/limit)
             controller.close();
             return;
           }

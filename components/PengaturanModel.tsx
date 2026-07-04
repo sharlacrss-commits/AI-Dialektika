@@ -79,10 +79,9 @@ export function PengaturanModel({
         </h1>
       </div>
       <p className="mt-1 text-muted">
-        Pilih model AI dari OpenRouter. Perubahan langsung dipakai untuk semua
-        chat dan penilaian. Model berlabel{" "}
-        <span className="font-semibold text-primary-press">gratis</span> tidak
-        memakai biaya.
+        Pilih model AI dari Sumopod. Perubahan langsung dipakai untuk semua
+        chat dan penilaian. Model utama dipakai duluan; model cadangan otomatis
+        dipakai kalau yang utama gagal.
       </p>
 
       <div className="mt-6 flex items-center gap-2 rounded-xl border-2 border-line bg-white px-4 py-2.5">
@@ -132,8 +131,8 @@ export function PengaturanModel({
       )}
 
       <p className="mt-4 text-xs text-muted">
-        Total {models.length} model tersedia. Saran: pakai model{" "}
-        <code>:free</code> untuk hemat, atau Gemini/GPT untuk kualitas terbaik.
+        Total {models.length} model tersedia. Saran: <code>gemini/gemini-2.5-flash</code>{" "}
+        untuk keseimbangan harga &amp; kualitas, <code>gpt-4o-mini</code> sebagai cadangan hemat.
       </p>
     </div>
   );

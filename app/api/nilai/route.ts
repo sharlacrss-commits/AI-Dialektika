@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { openrouterChat, type ORMessage } from "@/lib/openrouter";
+import { sumopodChat, type ChatMessage } from "@/lib/sumopod";
 import { SYSTEM_PENILAIAN } from "@/lib/prompts";
 
 export const runtime = "nodejs";
@@ -36,7 +36,7 @@ export async function POST(req: NextRequest) {
     .map((m) => `${m.peran === "user" ? "Siswa" : "Dialektika"}: ${m.isi}`)
     .join("\n");
 
-  const messages: ORMessage[] = [
+  const messages: ChatMessage[] = [
     { role: "system", content: SYSTEM_PENILAIAN },
     {
       role: "user",
@@ -53,12 +53,12 @@ export async function POST(req: NextRequest) {
     ? [setting.chat_model, setting.fallback_model]
     : undefined;
 
-  const orRes = await openrouterChat({ messages, temperature: 0.3, models });
-  if (!orRes.ok) {
-    const d = await orRes.text().catch(() => "");
+  const aiRes = await sumopodChat({ messages, temperature: 0.3, models });
+  if (!aiRes.ok) {
+    const d = await aiRes.text().catch(() => "");
     return new Response("AI gagal menilai. " + d, { status: 502 });
   }
-  const data = await orRes.json();
+  const data = await aiRes.json();
   const text: string = data.choices?.[0]?.message?.content ?? "";
 
   let parsed: Record<string, unknown> | null = null;

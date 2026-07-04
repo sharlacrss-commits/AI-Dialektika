@@ -41,7 +41,7 @@ export default async function ProfilPage() {
               Pengaturan Model AI
             </span>
             <span className="text-sm text-muted">
-              Ganti model OpenRouter (khusus admin)
+              Ganti model Sumopod (khusus admin)
             </span>
           </span>
           <ChevronRight size={18} className="text-muted" />

@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { sumopodChat, type ChatMessage } from "@/lib/sumopod";
 import { SYSTEM_DISKUSI, kickoffPrompt } from "@/lib/prompts";
 
@@ -81,11 +82,30 @@ export async function POST(req: NextRequest) {
   // Simpan jawaban AI ke DB. Dipanggil saat stream selesai normal MAUPUN
   // saat putus di tengah, supaya jawaban yang sudah terkirim ke layar
   // tidak hilang begitu halaman di-refresh.
+  //
+  // WAJIB pakai klien admin, bukan `supabase` di atas. Klien itu membaca
+  // token login dari cookie, sedangkan insert ini terjadi SETELAH respons
+  // mulai mengalir — pada titik itu Next.js sudah menutup akses cookie,
+  // sehingga permintaan terkirim tanpa identitas dan ditolak RLS. Itulah
+  // sebabnya pesan siswa (disimpan sebelum streaming) selalu masuk tapi
+  // jawaban AI tidak pernah tersimpan sama sekali.
+  // Aman melewati RLS karena kepemilikan sesi sudah diperiksa di atas.
+  // Kalau SUPABASE_SERVICE_ROLE_KEY belum diisi, jangan sampai fitur ini
+  // mati total — pakai klien biasa sebagai cadangan (mungkin gagal karena
+  // alasan di atas, tapi setidaknya tidak error).
+  const db = process.env.SUPABASE_SERVICE_ROLE_KEY
+    ? createAdminClient()
+    : supabase;
+  if (!process.env.SUPABASE_SERVICE_ROLE_KEY)
+    console.warn(
+      "[chat] SUPABASE_SERVICE_ROLE_KEY kosong — jawaban AI kemungkinan tidak tersimpan.",
+    );
+
   let tersimpan = false;
   async function simpanJawaban() {
     if (tersimpan || !full.trim()) return;
     tersimpan = true;
-    const { error } = await supabase.from("messages").insert({
+    const { error } = await db.from("messages").insert({
       session_id: sessionId,
       peran: "assistant",
       isi: full,

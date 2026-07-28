@@ -1,36 +1,119 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# AI Dialektika
 
-## Getting Started
+Teman belajar berbasis AI untuk siswa SMA. Alih-alih memberi jawaban, ia
+memancing siswa berpikir (metode Sokratik), lalu menilai keterampilan
+berpikir kritis memakai rubrik Facione.
 
-First, run the development server:
+Next.js 16 · React 19 · Supabase (database + auth) · Sumopod (AI, kompatibel OpenAI)
+
+---
+
+## Cara menjalankan (urut, jangan dilompati)
+
+### 1. Pasang Node.js
+
+Cek dulu apakah sudah terpasang — buka Terminal, ketik:
+
+```bash
+node -v
+```
+
+Kalau muncul `command not found`, unduh installer **LTS** dari
+<https://nodejs.org> lalu pasang. **Tutup dan buka lagi Terminal / VS Code**
+setelah selesai, lalu cek ulang `node -v`.
+
+### 2. Pasang dependency
+
+```bash
+npm install
+```
+
+Sekitar 1–3 menit. Setelah ini folder `node_modules/` muncul dan semua
+garis merah di VS Code hilang.
+
+### 3. Siapkan database Supabase
+
+1. Buat project gratis di <https://supabase.com>.
+2. Buka **SQL Editor → New query**.
+3. Copy seluruh isi [`supabase/schema.sql`](supabase/schema.sql), paste, klik **Run**.
+4. Buka **Authentication → Sign In / Providers → Email**, matikan
+   **Confirm email**, klik Save. (Kalau tidak, siswa harus verifikasi email
+   dulu sebelum bisa masuk.)
+
+### 4. Isi kunci di `.env.local`
+
+Buka file `.env.local` di root project, ganti setiap `ISI_DI_SINI`:
+
+| Variabel | Ambil di mana |
+| --- | --- |
+| `NEXT_PUBLIC_SUPABASE_URL` | Supabase → Project Settings → API Keys |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | idem, bagian **anon / public** |
+| `SUPABASE_SERVICE_ROLE_KEY` | idem, bagian **service_role** (rahasia) |
+| `SUMOPOD_API_KEY` | <https://sumopod.com> → buat API Key |
+
+File `.env.local` sudah masuk `.gitignore`, jadi aman dan tidak ikut
+ter-upload ke GitHub.
+
+### 5. Jalankan
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Buka <http://localhost:3000>.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+> Setiap kali `.env.local` diubah, **restart** `npm run dev` — Next.js hanya
+> membaca file itu saat start.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+---
 
-## Learn More
+## Menjadikan akunmu admin
 
-To learn more about Next.js, take a look at the following resources:
+Halaman **Pengaturan** (ganti model AI) dan endpoint `/api/export` hanya
+untuk admin. Setelah mendaftar lewat aplikasi, jalankan di SQL Editor:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```sql
+update public.profiles set role = 'admin'
+where id = (select id from auth.users where email = 'emailkamu@contoh.com');
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+---
 
-## Deploy on Vercel
+## Ekspor data penelitian
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+```
+/api/export?token=<isi ADMIN_EXPORT_TOKEN>
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Menghasilkan CSV: kode siswa, kelompok (eksperimen/kontrol), kelas, sekolah,
+mapel, status sesi, dan seluruh skor Facione.
+
+---
+
+## Kalau chatbot tidak membalas
+
+Pesan error di layar sekarang menyebut penyebabnya. Padanannya:
+
+| Pesan | Artinya | Perbaikan |
+| --- | --- | --- |
+| `SUMOPOD_API_KEY belum diisi` | env kosong | Isi `.env.local`, restart `npm run dev` |
+| `API key Sumopod ditolak` | key salah/kedaluwarsa | Buat key baru di sumopod.com |
+| `Saldo/kredit Sumopod habis` | kredit nol | Top up di sumopod.com |
+| `Terlalu banyak permintaan` | kena rate limit | Tunggu sebentar |
+| `Sesi login habis` | cookie auth kedaluwarsa | Muat ulang, masuk lagi |
+| Terjebak di halaman onboarding | tabel `profiles` belum ada | Jalankan `supabase/schema.sql` |
+
+Cek juga log di Terminal tempat `npm run dev` berjalan — error dari Sumopod
+dicatat dengan awalan `[chat]`.
+
+---
+
+## Deploy ke Vercel
+
+1. Push project ke GitHub.
+2. Import repo di <https://vercel.com>.
+3. **Settings → Environment Variables → Import .env**, paste isi
+   `.env.local` yang sudah terisi. Centang Production, Preview, Development.
+4. Deploy.
+
+Database Supabase-nya sama untuk lokal maupun produksi — cukup dijalankan sekali.

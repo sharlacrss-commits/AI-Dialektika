@@ -2,7 +2,10 @@
 // Base URL Sumopod: https://ai.sumopod.com  ->  endpoint chat: /v1/chat/completions
 const SUMOPOD_URL = "https://ai.sumopod.com/v1/chat/completions";
 
-const DEFAULT_UTAMA = "gemini/gemini-2.5-flash";
+// Diverifikasi ada di katalog Sumopod per 28 Juli 2026.
+// Katalog Sumopod berubah cukup sering — kalau chatbot tiba-tiba diam,
+// cek dulu daftar model terbaru di https://ai.sumopod.com/v1/models
+const DEFAULT_UTAMA = "gemini/gemini-3.5-flash";
 const DEFAULT_CADANGAN = "gpt-4o-mini";
 
 // Dibaca saat request (bukan saat module load) supaya selalu ikut env terbaru.
@@ -40,6 +43,15 @@ export async function sumopodChat({
   response_format,
   models,
 }: ChatOpts): Promise<Response> {
+  if (!process.env.SUMOPOD_API_KEY) {
+    // Tanpa cek ini, header terkirim sebagai "Bearer undefined" dan
+    // Sumopod membalas 401 — pesan errornya jadi menyesatkan.
+    return new Response(
+      "SUMOPOD_API_KEY belum diisi. Isi di .env.local (lokal) atau Environment Variables (Vercel), lalu restart server.",
+      { status: 500 },
+    );
+  }
+
   const list = [
     ...new Set((models?.length ? models : defaultModels()).filter(Boolean)),
   ];

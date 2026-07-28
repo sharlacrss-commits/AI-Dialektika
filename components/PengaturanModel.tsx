@@ -53,15 +53,22 @@ export function PengaturanModel({
 
   async function simpan() {
     setStatus("saving");
-    const { error } = await supabase
+    // upsert: kalau baris 'global' belum ada, update mengenai 0 baris
+    // tanpa error dan tombol terlihat "Tersimpan" padahal tidak.
+    const { data: tersimpan, error } = await supabase
       .from("app_settings")
-      .update({
-        chat_model: chatModel,
-        fallback_model: fallbackModel,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", "global");
-    if (error) {
+      .upsert(
+        {
+          id: "global",
+          chat_model: chatModel,
+          fallback_model: fallbackModel,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "id" },
+      )
+      .select("id")
+      .single();
+    if (error || !tersimpan) {
       setStatus("error");
       return;
     }

@@ -2,6 +2,11 @@
 
 # dependencies
 /node_modules
+
+# Project ini memakai pnpm (pnpm-lock.yaml) — itu yang dipakai Vercel saat
+# build. package-lock.json muncul kalau dependensi dipasang pakai npm di
+# lokal; jangan di-commit supaya Vercel tidak bingung memilih lockfile.
+/package-lock.json
 /.pnp
 .pnp.*
 .yarn/*

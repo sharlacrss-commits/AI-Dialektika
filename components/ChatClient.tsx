@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
+import { Markdown } from "@/components/Markdown";
 import type { Message, Session } from "@/lib/types";
 import {
   ArrowLeft,
@@ -22,6 +23,30 @@ type Bubble = {
   isi: string;
   is_pemantik?: boolean;
 };
+
+// Terjemahkan kegagalan /api/chat jadi pesan yang menunjuk penyebabnya,
+// bukan tebakan umum "AI sedang sibuk" yang menyulitkan saat menyiapkan app.
+function pesanError(status: number, detail: string) {
+  const d = detail.trim().slice(0, 300);
+  switch (status) {
+    case 401:
+      return d.includes("Belum masuk")
+        ? "Sesi login habis. Muat ulang halaman lalu masuk lagi."
+        : "API key Sumopod ditolak. Periksa SUMOPOD_API_KEY. " + d;
+    case 402:
+      return "Saldo/kredit Sumopod habis. Isi ulang di sumopod.com.";
+    case 404:
+      return "Sesi tidak ditemukan. Kembali ke beranda dan mulai sesi baru.";
+    case 429:
+      return "Terlalu banyak permintaan. Tunggu sebentar lalu coba lagi.";
+    case 500:
+      return d || "Server bermasalah. Cek log terminal / Vercel.";
+    default:
+      return d
+        ? `Gagal mengirim (${status}). ${d}`
+        : `Gagal mengirim (${status}). Coba lagi.`;
+  }
+}
 
 export function ChatClient({
   session,
@@ -88,11 +113,8 @@ export function ChatClient({
         body: JSON.stringify({ sessionId: session.id, ...opts }),
       });
       if (!res.ok || !res.body) {
-        setError(
-          res.status === 502
-            ? "AI sedang sibuk atau kuota habis. Coba lagi sebentar."
-            : "Gagal mengirim. Coba lagi.",
-        );
+        const detail = await res.text().catch(() => "");
+        setError(pesanError(res.status, detail));
         setStreaming(null);
         setBusy(false);
         return;
@@ -214,7 +236,7 @@ export function ChatClient({
             <div className="flex gap-2.5">
               <Avatar ai />
               <div className="max-w-[85%] rounded-2xl rounded-tl-sm bg-accent-soft px-4 py-3 text-[15px] leading-relaxed text-primary-press">
-                {streaming === "" ? <ThinkingDots /> : streaming}
+                {streaming === "" ? <ThinkingDots /> : <Markdown teks={streaming} />}
               </div>
             </div>
           )}
@@ -328,8 +350,8 @@ function AiBubble({
             <Lightbulb size={12} /> Pertanyaan Pemantik
           </span>
         )}
-        <div className="whitespace-pre-wrap rounded-2xl rounded-tl-sm bg-accent-soft px-4 py-3 text-[15px] leading-relaxed text-primary-press">
-          {isi}
+        <div className="rounded-2xl rounded-tl-sm bg-accent-soft px-4 py-3 text-[15px] leading-relaxed text-primary-press">
+          <Markdown teks={isi} />
         </div>
         <button
           onClick={onSave}

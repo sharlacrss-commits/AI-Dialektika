@@ -64,7 +64,12 @@ export async function POST(req: NextRequest) {
   const aiRes = await sumopodChat({ messages, stream: true, models });
   if (!aiRes.ok || !aiRes.body) {
     const detail = await aiRes.text().catch(() => "");
-    return new Response("AI tidak merespons. " + detail, { status: 502 });
+    console.error("[chat] Sumopod gagal:", aiRes.status, detail.slice(0, 500));
+    return new Response("AI tidak merespons. " + detail, {
+      // Teruskan status aslinya supaya penyebabnya bisa dibedakan:
+      // 401 = API key salah, 402 = saldo habis, 429 = kena limit.
+      status: aiRes.status >= 400 ? aiRes.status : 502,
+    });
   }
 
   const encoder = new TextEncoder();
@@ -73,18 +78,27 @@ export async function POST(req: NextRequest) {
   let full = "";
   let buffer = "";
 
+  // Simpan jawaban AI ke DB. Dipanggil saat stream selesai normal MAUPUN
+  // saat putus di tengah, supaya jawaban yang sudah terkirim ke layar
+  // tidak hilang begitu halaman di-refresh.
+  let tersimpan = false;
+  async function simpanJawaban() {
+    if (tersimpan || !full.trim()) return;
+    tersimpan = true;
+    const { error } = await supabase.from("messages").insert({
+      session_id: sessionId,
+      peran: "assistant",
+      isi: full,
+      is_pemantik: full.includes("?"),
+    });
+    if (error) console.error("[chat] gagal simpan jawaban:", error.message);
+  }
+
   const stream = new ReadableStream({
     async pull(controller) {
       const { done, value } = await reader.read();
       if (done) {
-        if (full.trim()) {
-          await supabase.from("messages").insert({
-            session_id: sessionId,
-            peran: "assistant",
-            isi: full,
-            is_pemantik: full.includes("?"),
-          });
-        }
+        await simpanJawaban();
         controller.close();
         return;
       }
@@ -100,6 +114,8 @@ export async function POST(req: NextRequest) {
           const json = JSON.parse(data);
           if (json.error) {
             // Sumopod bisa mengirim error di tengah stream (mis. kuota habis/limit)
+            console.error("[chat] error di tengah stream:", json.error);
+            await simpanJawaban();
             controller.close();
             return;
           }
@@ -113,8 +129,10 @@ export async function POST(req: NextRequest) {
         }
       }
     },
-    cancel() {
-      reader.cancel();
+    async cancel() {
+      // Siswa menutup/berpindah halaman di tengah jawaban.
+      await simpanJawaban();
+      await reader.cancel();
     },
   });
 

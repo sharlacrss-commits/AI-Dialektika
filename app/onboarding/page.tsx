@@ -36,25 +36,35 @@ export default function OnboardingPage() {
       return;
     }
 
-    const { error } = await supabase
+    // upsert, bukan update: kalau baris profil belum sempat dibuat oleh
+    // trigger on_auth_user_created, update akan mengenai 0 baris TANPA
+    // error — siswa lalu terjebak di halaman ini selamanya.
+    const { data: tersimpan, error } = await supabase
       .from("profiles")
-      .update({
-        nama,
-        kode_siswa: kodeSiswa.trim().toUpperCase(),
-        kelas,
-        sekolah,
-        kelompok,
-        consent: true,
-        consent_at: new Date().toISOString(),
-        onboarded: true,
-      })
-      .eq("id", user.id);
+      .upsert(
+        {
+          id: user.id,
+          nama,
+          kode_siswa: kodeSiswa.trim().toUpperCase(),
+          kelas,
+          sekolah,
+          kelompok,
+          consent: true,
+          consent_at: new Date().toISOString(),
+          onboarded: true,
+        },
+        { onConflict: "id" },
+      )
+      .select("id")
+      .single();
 
-    if (error) {
+    if (error || !tersimpan) {
       setError(
-        error.code === "23505"
+        error?.code === "23505"
           ? "Kode siswa itu sudah dipakai. Pakai kode lain."
-          : "Gagal menyimpan: " + error.message,
+          : "Gagal menyimpan: " +
+              (error?.message ??
+                "profil tidak tersimpan. Pastikan supabase/schema.sql sudah dijalankan."),
       );
       setLoading(false);
       return;

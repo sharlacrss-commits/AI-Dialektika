@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Logo } from "@/components/Logo";
-import { Loader2 } from "lucide-react";
+import { Loader2, LogOut } from "lucide-react";
 import type { Kelompok } from "@/lib/types";
 
 export default function OnboardingPage() {
@@ -18,6 +18,19 @@ export default function OnboardingPage() {
   const [consent, setConsent] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [keluar, setKeluar] = useState(false);
+
+  // Jalan keluar dari halaman ini. WAJIB ada: selama profil belum
+  // onboarded, /masuk memantulkan ke /beranda dan /beranda memantulkan
+  // balik ke sini. Tanpa tombol ini siswa yang gagal menyimpan data
+  // terkunci total dan satu-satunya jalan keluar adalah menghapus cookie
+  // browser — tidak masuk akal untuk siswa SMA.
+  async function keluarAkun() {
+    setKeluar(true);
+    await supabase.auth.signOut();
+    router.push("/masuk");
+    router.refresh();
+  }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -96,7 +109,22 @@ export default function OnboardingPage() {
 
   return (
     <main className="mx-auto flex min-h-dvh max-w-lg flex-col justify-center px-6 py-10">
-      <Logo size="md" withText />
+      <div className="flex items-center justify-between gap-3">
+        <Logo size="md" withText />
+        <button
+          type="button"
+          onClick={keluarAkun}
+          disabled={keluar}
+          className="flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-medium text-muted transition hover:bg-bg-soft hover:text-ink disabled:opacity-60"
+        >
+          {keluar ? (
+            <Loader2 size={15} className="animate-spin" />
+          ) : (
+            <LogOut size={15} />
+          )}
+          Keluar
+        </button>
+      </div>
       <h1 className="mt-8 font-display text-2xl font-bold text-ink">
         Lengkapi data dulu ya
       </h1>

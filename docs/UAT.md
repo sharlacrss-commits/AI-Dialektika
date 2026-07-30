@@ -68,6 +68,8 @@ Catatan **wajib** diisi.
 | A4 | Coba isi kode siswa yang sudah dipakai orang lain | Muncul pesan "Kode siswa itu sudah dipakai" | | |
 | A5 | Keluar lalu masuk lagi | Langsung ke Beranda, tidak diminta isi data lagi | | |
 | A6 | Masuk dengan sandi salah | Muncul "Email atau kata sandi salah" | | |
+| A7 | Saat di halaman onboarding, klik "Keluar" | Kembali ke halaman masuk dan **tetap di sana**, tidak terpantul balik | | |
+| A8 | Gagal menyimpan onboarding, lalu ingin ganti akun | Bisa keluar lewat tombol "Keluar", tidak terkunci | | |
 
 ### B. Diskusi dengan Dialektika (inti aplikasi)
 
@@ -157,12 +159,12 @@ bagian yang terdampak.
 
 | Bagian | Jumlah skenario | Lulus | Gagal |
 | --- | --- | --- | --- |
-| A. Pendaftaran & Masuk | 6 | | |
+| A. Pendaftaran & Masuk | 8 | | |
 | B. Diskusi | 11 | | |
 | C. Penilaian | 7 | | |
 | D. Catatan & Perkembangan | 7 | | |
 | F. Keamanan Data | 5 | | |
-| **Total** | **36** | | |
+| **Total** | **38** | | |
 
 Rata-rata nilai bagian E: ............ / 5
 
@@ -217,6 +219,7 @@ Dijalankan pada **30 Juli 2026** terhadap `localhost:3000` dan
 | Middleware mengalihkan seluruh `/api/*` | Ekspor data riset **tidak pernah bisa diakses** |
 | `sessions` ↔ `profiles` tidak punya relasi di database | Ekspor CSV gagal total |
 | `upsert` pada profiles ditolak RLS | Siswa **tidak bisa menyelesaikan onboarding** |
+| Tidak ada jalan keluar dari halaman onboarding | Siswa yang gagal menyimpan **terkunci total**: `/masuk` memantul ke `/beranda`, `/beranda` memantul balik ke `/onboarding`. Satu-satunya jalan keluar adalah menghapus cookie browser |
 | Markdown `**tebal**` tampil mentah | Jawaban AI penuh tanda `**` |
 
 ### Temuan minor yang BELUM diperbaiki

@@ -57,23 +57,55 @@ Selain skor keseluruhan, nilai 6 keterampilan berpikir kritis (skala 1-10) menur
 
 Bahasa untuk kelebihan/kekurangan/saran: Indonesia, menyemangati, dan konkret.`;
 
+// Nama field angka yang WAJIB ada di jawaban AI. Dipakai bersama oleh
+// skema di bawah dan pemeriksaan di /api/nilai.
+export const FIELD_ANGKA = [
+  "skor",
+  "interpretasi",
+  "analisis",
+  "evaluasi",
+  "inferensi",
+  "eksplanasi",
+  "regulasi_diri",
+] as const;
+
+const ANGKA = { type: "integer" } as const;
+const TEKS = { type: "string" } as const;
+
+// Skema ini WAJIB benar-benar dikirim ke API lewat response_format, bukan
+// hanya ditulis di prompt. Saat hanya diandalkan pada prompt, model pernah
+// menjawab dengan nama field "skor_keseluruhan"; kode mencari "skor",
+// tidak menemukannya, lalu menulis skor 1 tanpa peringatan apa pun —
+// seluruh data penilaian jadi tidak sahih.
+//
+// Catatan: minimum/maximum sengaja tidak dicantumkan karena mode strict
+// menolaknya. Rentang 1-10 ditegakkan ulang di kode (fungsi clamp).
 export const SKEMA_SKOR = {
-  type: "object",
-  properties: {
-    skor: { type: "integer", minimum: 1, maximum: 10 },
-    interpretasi: { type: "integer", minimum: 1, maximum: 10 },
-    analisis: { type: "integer", minimum: 1, maximum: 10 },
-    evaluasi: { type: "integer", minimum: 1, maximum: 10 },
-    inferensi: { type: "integer", minimum: 1, maximum: 10 },
-    eksplanasi: { type: "integer", minimum: 1, maximum: 10 },
-    regulasi_diri: { type: "integer", minimum: 1, maximum: 10 },
-    kelebihan: { type: "string" },
-    kekurangan: { type: "string" },
-    saran: { type: "string" },
+  type: "json_schema",
+  json_schema: {
+    name: "penilaian_dialektika",
+    strict: true,
+    schema: {
+      type: "object",
+      properties: {
+        skor: ANGKA,
+        interpretasi: ANGKA,
+        analisis: ANGKA,
+        evaluasi: ANGKA,
+        inferensi: ANGKA,
+        eksplanasi: ANGKA,
+        regulasi_diri: ANGKA,
+        kelebihan: TEKS,
+        kekurangan: TEKS,
+        saran: TEKS,
+      },
+      required: [
+        ...FIELD_ANGKA,
+        "kelebihan",
+        "kekurangan",
+        "saran",
+      ],
+      additionalProperties: false,
+    },
   },
-  required: [
-    "skor", "interpretasi", "analisis", "evaluasi", "inferensi",
-    "eksplanasi", "regulasi_diri", "kelebihan", "kekurangan", "saran",
-  ],
-  additionalProperties: false,
 } as const;

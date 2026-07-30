@@ -18,6 +18,10 @@
 # testing
 /coverage
 
+# Artefak Playwright MCP (snapshot & log konsol hasil pengujian browser).
+# Jangan di-commit: isinya sementara dan bisa memuat token sesi login.
+/.playwright-mcp
+
 # next.js
 /.next/
 /out/

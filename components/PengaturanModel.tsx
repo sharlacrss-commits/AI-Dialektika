@@ -53,24 +53,33 @@ export function PengaturanModel({
 
   async function simpan() {
     setStatus("saving");
-    // upsert: kalau baris 'global' belum ada, update mengenai 0 baris
-    // tanpa error dan tombol terlihat "Tersimpan" padahal tidak.
-    const { data: tersimpan, error } = await supabase
+    const isi = {
+      chat_model: chatModel,
+      fallback_model: fallbackModel,
+      updated_at: new Date().toISOString(),
+    };
+
+    // Update dulu, insert hanya kalau barisnya belum ada. Sengaja tidak
+    // memakai upsert: upsert selalu menuntut izin INSERT walau barisnya
+    // sudah ada, dan kebijakan RLS bisa menolaknya (403).
+    const { data: terupdate, error } = await supabase
       .from("app_settings")
-      .upsert(
-        {
-          id: "global",
-          chat_model: chatModel,
-          fallback_model: fallbackModel,
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: "id" },
-      )
-      .select("id")
-      .single();
-    if (error || !tersimpan) {
+      .update(isi)
+      .eq("id", "global")
+      .select("id");
+
+    if (error) {
       setStatus("error");
       return;
+    }
+    if (!terupdate || terupdate.length === 0) {
+      const { error: errInsert } = await supabase
+        .from("app_settings")
+        .insert({ id: "global", ...isi });
+      if (errInsert) {
+        setStatus("error");
+        return;
+      }
     }
     setStatus("saved");
     router.refresh();

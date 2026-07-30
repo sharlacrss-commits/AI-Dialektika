@@ -34,8 +34,15 @@ export async function middleware(request: NextRequest) {
   const path = request.nextUrl.pathname;
   const isPublic = PUBLIC_PATHS.some((p) => path.startsWith(p));
 
+  // Route API mengurus izinnya sendiri (401), jadi jangan dialihkan ke
+  // halaman /masuk. Pengalihan HTML ke endpoint API bikin dua masalah:
+  //  - /api/export yang diproteksi token jadi TIDAK PERNAH bisa diakses,
+  //    karena ekspor riset dipanggil lewat curl/browser tanpa cookie login.
+  //  - pemanggil menerima HTML halaman masuk, bukan pesan error yang jelas.
+  const isApi = path.startsWith("/api");
+
   // Belum login + buka halaman terlindungi -> ke /masuk
-  if (!user && !isPublic && path !== "/") {
+  if (!user && !isPublic && !isApi && path !== "/") {
     const url = request.nextUrl.clone();
     url.pathname = "/masuk";
     return NextResponse.redirect(url);

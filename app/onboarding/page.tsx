@@ -36,38 +36,58 @@ export default function OnboardingPage() {
       return;
     }
 
-    // upsert, bukan update: kalau baris profil belum sempat dibuat oleh
-    // trigger on_auth_user_created, update akan mengenai 0 baris TANPA
-    // error — siswa lalu terjebak di halaman ini selamanya.
-    const { data: tersimpan, error } = await supabase
-      .from("profiles")
-      .upsert(
-        {
-          id: user.id,
-          nama,
-          kode_siswa: kodeSiswa.trim().toUpperCase(),
-          kelas,
-          sekolah,
-          kelompok,
-          consent: true,
-          consent_at: new Date().toISOString(),
-          onboarded: true,
-        },
-        { onConflict: "id" },
-      )
-      .select("id")
-      .single();
+    const isi = {
+      nama,
+      kode_siswa: kodeSiswa.trim().toUpperCase(),
+      kelas,
+      sekolah,
+      kelompok,
+      consent: true,
+      consent_at: new Date().toISOString(),
+      onboarded: true,
+    };
 
-    if (error || !tersimpan) {
+    // Dua tahap, JANGAN pakai upsert. Upsert selalu meminta izin INSERT
+    // walau barisnya sudah ada, dan kebijakan RLS umumnya hanya mengizinkan
+    // siswa meng-UPDATE profilnya sendiri -> ditolak 403.
+    //
+    // Tahap 1: update biasa. Ini jalur normal, karena trigger
+    // on_auth_user_created sudah membuat barisnya saat siswa mendaftar.
+    const { data: terupdate, error: errUpdate } = await supabase
+      .from("profiles")
+      .update(isi)
+      .eq("id", user.id)
+      .select("id");
+
+    if (errUpdate) {
       setError(
-        error?.code === "23505"
+        errUpdate.code === "23505"
           ? "Kode siswa itu sudah dipakai. Pakai kode lain."
-          : "Gagal menyimpan: " +
-              (error?.message ??
-                "profil tidak tersimpan. Pastikan supabase/schema.sql sudah dijalankan."),
+          : "Gagal menyimpan: " + errUpdate.message,
       );
       setLoading(false);
       return;
+    }
+
+    // Tahap 2: hanya kalau barisnya benar-benar belum ada (trigger tidak
+    // terpasang). Tanpa ini update mengenai 0 baris tanpa error dan siswa
+    // terjebak di halaman ini selamanya.
+    if (!terupdate || terupdate.length === 0) {
+      const { error: errInsert } = await supabase
+        .from("profiles")
+        .insert({ id: user.id, ...isi });
+      if (errInsert) {
+        setError(
+          errInsert.code === "23505"
+            ? "Kode siswa itu sudah dipakai. Pakai kode lain."
+            : "Profil belum dibuat di database. Minta admin menjalankan " +
+                "supabase/schema.sql di Supabase SQL Editor. (" +
+                errInsert.message +
+                ")",
+        );
+        setLoading(false);
+        return;
+      }
     }
 
     router.push("/beranda");

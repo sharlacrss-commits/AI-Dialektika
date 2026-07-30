@@ -13,14 +13,29 @@ export async function GET(req: NextRequest) {
 
   const supabase = createAdminClient();
 
-  const { data, error } = await supabase
-    .from("sessions")
-    .select(
-      "id, mapel, topik, status, mulai_at, selesai_at, profiles(kode_siswa, kelompok, kelas, sekolah), scores(skor, interpretasi, analisis, evaluasi, inferensi, eksplanasi, regulasi_diri)",
-    )
-    .order("mulai_at", { ascending: true });
+  // Diambil sebagai tiga query terpisah lalu digabung di sini, BUKAN dengan
+  // select bersarang "sessions -> profiles(...)". Penggabungan bersarang
+  // menuntut adanya foreign key sessions.user_id -> profiles.id; di database
+  // produksi kolom itu menunjuk ke auth.users, sehingga PostgREST menolak
+  // dengan "Could not find a relationship" dan ekspor riset selalu gagal.
+  const [sesi, profil, skor] = await Promise.all([
+    supabase
+      .from("sessions")
+      .select("id, user_id, mapel, topik, status, mulai_at, selesai_at")
+      .order("mulai_at", { ascending: true }),
+    supabase.from("profiles").select("id, kode_siswa, kelompok, kelas, sekolah"),
+    supabase
+      .from("scores")
+      .select(
+        "session_id, skor, interpretasi, analisis, evaluasi, inferensi, eksplanasi, regulasi_diri",
+      ),
+  ]);
 
-  if (error) return new Response("Gagal: " + error.message, { status: 500 });
+  const gagal = sesi.error ?? profil.error ?? skor.error;
+  if (gagal) return new Response("Gagal: " + gagal.message, { status: 500 });
+
+  const petaProfil = new Map((profil.data ?? []).map((p) => [p.id, p]));
+  const petaSkor = new Map((skor.data ?? []).map((s) => [s.session_id, s]));
 
   const kolom = [
     "kode_siswa", "kelompok", "kelas", "sekolah",
@@ -34,9 +49,9 @@ export async function GET(req: NextRequest) {
     return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
   };
 
-  const baris = (data ?? []).map((s) => {
-    const p = Array.isArray(s.profiles) ? s.profiles[0] : s.profiles;
-    const sc = Array.isArray(s.scores) ? s.scores[0] : s.scores;
+  const baris = (sesi.data ?? []).map((s) => {
+    const p = petaProfil.get(s.user_id);
+    const sc = petaSkor.get(s.id);
     return [
       p?.kode_siswa, p?.kelompok, p?.kelas, p?.sekolah,
       s.mapel, s.topik, s.status, s.mulai_at, s.selesai_at,

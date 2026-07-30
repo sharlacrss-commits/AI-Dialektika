@@ -129,7 +129,17 @@ export async function POST(req: NextRequest) {
         const t = line.trim();
         if (!t.startsWith("data:")) continue;
         const data = t.slice(5).trim();
-        if (data === "[DONE]") continue;
+        // "[DONE]" adalah penanda selesai resmi SSE gaya OpenAI. WAJIB
+        // langsung ditutup di sini, jangan cuma di-skip: kalau menunggu
+        // koneksi hulu tertutup sendiri, permintaan menggantung sampai
+        // browser memutusnya (terukur 106 detik untuk balasan 3 detik).
+        // Selama menggantung, kolom chat siswa terkunci dan di Vercel
+        // permintaan akan mati kena batas maxDuration 60 detik.
+        if (data === "[DONE]") {
+          await simpanJawaban();
+          controller.close();
+          return;
+        }
         try {
           const json = JSON.parse(data);
           if (json.error) {

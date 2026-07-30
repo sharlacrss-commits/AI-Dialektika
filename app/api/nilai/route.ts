@@ -1,13 +1,15 @@
 import { NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { sumopodChat, type ChatMessage } from "@/lib/sumopod";
-import { SYSTEM_PENILAIAN } from "@/lib/prompts";
+import { SYSTEM_PENILAIAN, SKEMA_SKOR, FIELD_ANGKA } from "@/lib/prompts";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
-const clamp = (n: unknown) =>
-  Math.min(10, Math.max(1, Math.round(Number(n) || 1)));
+// Hanya membatasi rentang ke 1-10. TIDAK boleh dipakai untuk menambal nilai
+// yang tidak ada — itu yang dulu membuat field tak terbaca tersimpan sebagai
+// skor 1. Ketidaklengkapan diperiksa terpisah di bawah.
+const clamp = (n: unknown) => Math.min(10, Math.max(1, Math.round(Number(n))));
 
 export async function POST(req: NextRequest) {
   const { sessionId } = await req.json();
@@ -53,7 +55,12 @@ export async function POST(req: NextRequest) {
     ? [setting.chat_model, setting.fallback_model]
     : undefined;
 
-  const aiRes = await sumopodChat({ messages, temperature: 0.3, models });
+  const aiRes = await sumopodChat({
+    messages,
+    temperature: 0.3,
+    models,
+    response_format: SKEMA_SKOR,
+  });
   if (!aiRes.ok) {
     const d = await aiRes.text().catch(() => "");
     return new Response("AI gagal menilai. " + d, { status: 502 });
@@ -75,6 +82,25 @@ export async function POST(req: NextRequest) {
     }
   }
   if (!parsed) return new Response("Format nilai tidak terbaca", { status: 502 });
+
+  // Jaring pengaman: kalau model tetap memakai nama lain (mis. pernah
+  // menjawab "skor_keseluruhan"), pakai padanannya.
+  if (parsed.skor === undefined)
+    parsed.skor = parsed.skor_keseluruhan ?? parsed.nilai ?? parsed.total;
+
+  // Lebih baik GAGAL TERANG-TERANGAN daripada menyimpan skor palsu. Data
+  // penilaian ini dipakai untuk penelitian, jadi angka yang tidak benar
+  // jauh lebih berbahaya daripada permintaan yang gagal.
+  const hilang = FIELD_ANGKA.filter(
+    (k) => !Number.isFinite(Number(parsed![k])),
+  );
+  if (hilang.length > 0) {
+    console.error("[nilai] field angka tidak terbaca:", hilang, text.slice(0, 300));
+    return new Response(
+      "Penilaian tidak lengkap (" + hilang.join(", ") + "). Coba nilai ulang.",
+      { status: 502 },
+    );
+  }
 
   const row = {
     session_id: sessionId,

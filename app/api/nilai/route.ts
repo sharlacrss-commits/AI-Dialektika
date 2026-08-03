@@ -30,12 +30,22 @@ export async function POST(req: NextRequest) {
 
   const { data: pesan } = await supabase
     .from("messages")
-    .select("peran, isi")
+    .select("peran, isi, lampiran_nama")
     .eq("session_id", sessionId)
     .order("created_at", { ascending: true });
 
+  // Lampiran ikut dicatat di transkrip. Tanpa ini penilai tidak tahu bahwa
+  // sebagian konteks (soal, atau bahkan hasil kerja siswa) ada di dalam file,
+  // lalu menilai seolah siswa berbicara tanpa dasar — skornya jadi lebih
+  // rendah dari kemampuan sebenarnya.
   const transkrip = (pesan ?? [])
-    .map((m) => `${m.peran === "user" ? "Siswa" : "Dialektika"}: ${m.isi}`)
+    .map((m) => {
+      const siapa = m.peran === "user" ? "Siswa" : "Dialektika";
+      const lampiran = m.lampiran_nama
+        ? ` [melampirkan file: ${m.lampiran_nama}]`
+        : "";
+      return `${siapa}: ${m.isi}${lampiran}`;
+    })
     .join("\n");
 
   const messages: ChatMessage[] = [

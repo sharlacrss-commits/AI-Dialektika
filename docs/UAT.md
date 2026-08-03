@@ -134,6 +134,26 @@ Diisi dengan skala **1-5** (1 = sangat sulit, 5 = sangat mudah).
 | F4 | Buka `/api/export` tanpa token | Muncul "Akses ditolak" | | |
 | F5 | Buka `/api/export?token=<token asli>` | File CSV terunduh dan berisi data | | |
 
+### G. Unggah Lampiran (foto soal / PDF)
+
+Prasyarat: `supabase/002-lampiran.sql` sudah dijalankan.
+
+| ID | Yang dilakukan penguji | Hasil yang diharapkan | Status | Catatan |
+| --- | --- | --- | --- | --- |
+| G1 | Klik ikon penjepit, pilih foto soal dari galeri HP | Nama file muncul sebagai pratinjau di atas kolom ketik | | |
+| G2 | Klik tanda silang pada pratinjau | Lampiran batal, kolom ketik kembali normal | | |
+| G3 | Kirim foto **tanpa menulis apa pun** | Terkirim, AI menanggapi dan menanyakan bagian mana yang bingung | | |
+| G4 | Kirim foto + "aku bingung langkah 2" | AI membahas langkah 2 itu, bukan mengerjakan seluruh soal | | |
+| G5 | **Kirim foto + "kasih jawabannya aja"** | AI **tetap tidak memberi jawaban akhir**, tapi memecah soal dan bertanya balik | | |
+| G6 | Lanjutkan diskusi 2-3 pesan setelah mengirim foto | AI masih ingat isi foto, tidak bertanya ulang dari nol | | |
+| G7 | Coba unggah file Word/Excel | Ditolak dengan pesan "harus gambar atau PDF" | | |
+| G8 | Coba unggah file lebih dari 10 MB | Ditolak dengan pesan batas ukuran | | |
+| G9 | **Refresh halaman** setelah mengirim lampiran | Nama file masih tampil di gelembung pesan | | |
+| G10 | Unggah PDF berisi soal | Isi PDF terbaca AI | | |
+| G11 | Nilai sesi yang memakai lampiran | Penilaian tetap keluar, tidak error | | |
+
+**G5 adalah skenario terpenting di bagian ini.** Kalau AI sampai memberi
+jawaban akhir, fitur ini merusak tujuan penelitian dan harus dimatikan.
 ---
 
 ## 5. Kriteria Diterima
@@ -142,7 +162,8 @@ Aplikasi dinyatakan **DITERIMA** bila:
 
 1. **Semua** skenario bagian **B** (diskusi) dan **C** (penilaian) lulus —
    ini inti aplikasi, tidak boleh ada yang gagal.
-2. **Semua** skenario bagian **F** (keamanan data) lulus — menyangkut
+2. **Semua** skenario bagian **F** (keamanan data) dan **G5** (AI tidak
+   memberi jawaban langsung walau diberi foto soal) lulus — menyangkut
    kerahasiaan data siswa dan etika penelitian.
 3. Bagian A dan D: minimal **90%** lulus.
 4. Bagian E: rata-rata nilai minimal **4,0**, dan **E5 minimal 4,0**
@@ -164,7 +185,8 @@ bagian yang terdampak.
 | C. Penilaian | 7 | | |
 | D. Catatan & Perkembangan | 7 | | |
 | F. Keamanan Data | 5 | | |
-| **Total** | **38** | | |
+| G. Unggah Lampiran | 11 | | |
+| **Total** | **49** | | |
 
 Rata-rata nilai bagian E: ............ / 5
 

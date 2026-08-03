@@ -59,6 +59,14 @@ create table if not exists public.messages (
   created_at  timestamptz not null default now()
 );
 
+-- Kolom lampiran (foto soal / PDF). Dipisah supaya database lama yang
+-- sudah punya tabel messages ikut kebagian saat file ini dijalankan ulang.
+-- Bucket penyimpanan & izinnya ada di supabase/002-lampiran.sql.
+alter table public.messages
+  add column if not exists lampiran_path text,
+  add column if not exists lampiran_nama text,
+  add column if not exists lampiran_tipe text;
+
 create index if not exists messages_session_idx on public.messages (session_id, created_at);
 
 -- --- scores: hasil penilaian AI -----------------------------

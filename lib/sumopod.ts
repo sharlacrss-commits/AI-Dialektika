@@ -16,9 +16,16 @@ export function defaultModels() {
   ];
 }
 
+// Isi pesan bisa berupa teks biasa, atau gabungan teks + file (gambar/PDF)
+// saat siswa melampirkan sesuatu. Format multimodal ini mengikuti gaya
+// OpenAI; Sumopod menerimanya apa adanya, sudah diuji untuk PNG dan PDF.
+export type BagianIsi =
+  | { type: "text"; text: string }
+  | { type: "image_url"; image_url: { url: string } };
+
 export type ChatMessage = {
   role: "system" | "user" | "assistant";
-  content: string;
+  content: string | BagianIsi[];
 };
 
 // Alias kompatibilitas untuk kode lama yang masih memakai nama ORMessage.

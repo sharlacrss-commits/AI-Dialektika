@@ -31,6 +31,10 @@ export type Message = {
   isi: string;
   is_pemantik: boolean;
   created_at: string;
+  // Diisi kalau siswa melampirkan foto soal / PDF. Lihat supabase/002-lampiran.sql.
+  lampiran_path?: string | null;
+  lampiran_nama?: string | null;
+  lampiran_tipe?: string | null;
 };
 
 export type Score = {

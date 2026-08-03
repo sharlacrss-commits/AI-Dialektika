@@ -15,6 +15,10 @@ import {
   Loader2,
   Clock,
   CheckCircle2,
+  Paperclip,
+  FileText,
+  Image as ImageIcon,
+  X,
 } from "lucide-react";
 
 type Bubble = {
@@ -22,7 +26,20 @@ type Bubble = {
   peran: "user" | "assistant";
   isi: string;
   is_pemantik?: boolean;
+  lampiran_nama?: string | null;
+  lampiran_tipe?: string | null;
 };
+
+type Lampiran = { path: string; nama: string; tipe: string };
+
+const MAKS_BYTE = 10 * 1024 * 1024; // 10 MB, sama dengan batas bucket
+const TIPE_BOLEH = [
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+  "image/heic",
+  "application/pdf",
+];
 
 // Terjemahkan kegagalan /api/chat jadi pesan yang menunjuk penyebabnya,
 // bukan tebakan umum "AI sedang sibuk" yang menyulitkan saat menyiapkan app.
@@ -70,9 +87,46 @@ export function ChatClient({
   const [error, setError] = useState<string | null>(null);
   const [savedIdx, setSavedIdx] = useState<number | null>(null);
   const [durasi, setDurasi] = useState("00:00");
+  const [berkas, setBerkas] = useState<File | null>(null);
+  const [mengunggah, setMengunggah] = useState(false);
 
   const bottomRef = useRef<HTMLDivElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
   const kickoffDone = useRef(false);
+
+  // Unggah ke Storage lebih dulu, baru path-nya dikirim ke /api/chat.
+  // File tidak dikirim lewat body chat supaya permintaannya tetap ringan
+  // dan tidak kena batas ukuran body di Vercel.
+  async function unggah(f: File): Promise<Lampiran | null> {
+    const bersih = f.name.replace(/[^\w.\-]+/g, "_").slice(-60);
+    const path = `${userId}/${session.id}/${Date.now()}-${bersih}`;
+    const { error } = await supabase.storage
+      .from("lampiran")
+      .upload(path, f, { contentType: f.type, upsert: false });
+    if (error) {
+      setError(
+        error.message.toLowerCase().includes("bucket")
+          ? "Penyimpanan lampiran belum disiapkan. Minta admin menjalankan supabase/002-lampiran.sql."
+          : "Gagal mengunggah file: " + error.message,
+      );
+      return null;
+    }
+    return { path, nama: f.name, tipe: f.type };
+  }
+
+  function pilihBerkas(f: File | null) {
+    setError(null);
+    if (!f) return setBerkas(null);
+    if (!TIPE_BOLEH.includes(f.type)) {
+      setError("File harus berupa gambar (PNG/JPG/WEBP) atau PDF.");
+      return;
+    }
+    if (f.size > MAKS_BYTE) {
+      setError("Ukuran file maksimal 10 MB. Coba fotonya dikecilkan dulu.");
+      return;
+    }
+    setBerkas(f);
+  }
 
   const inisial = nama.trim().slice(0, 2).toUpperCase() || "BS";
 
@@ -102,7 +156,11 @@ export function ChatClient({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function runStream(opts: { pesan?: string; kickoff?: boolean }) {
+  async function runStream(opts: {
+    pesan?: string;
+    kickoff?: boolean;
+    lampiran?: Lampiran;
+  }) {
     setBusy(true);
     setError(null);
     setStreaming("");
@@ -148,10 +206,31 @@ export function ChatClient({
 
   async function kirim() {
     const teks = input.trim();
-    if (!teks || busy) return;
+    // Boleh mengirim file saja tanpa menulis apa-apa.
+    if ((!teks && !berkas) || busy || mengunggah) return;
+
+    let terlampir: Lampiran | undefined;
+    if (berkas) {
+      setMengunggah(true);
+      const hasil = await unggah(berkas);
+      setMengunggah(false);
+      if (!hasil) return; // pesan error sudah dipasang di unggah()
+      terlampir = hasil;
+    }
+
     setInput("");
-    setMessages((prev) => [...prev, { peran: "user", isi: teks }]);
-    await runStream({ pesan: teks });
+    setBerkas(null);
+    if (fileRef.current) fileRef.current.value = "";
+    setMessages((prev) => [
+      ...prev,
+      {
+        peran: "user",
+        isi: teks,
+        lampiran_nama: terlampir?.nama ?? null,
+        lampiran_tipe: terlampir?.tipe ?? null,
+      },
+    ]);
+    await runStream({ pesan: teks, lampiran: terlampir });
   }
 
   async function simpanCatatan(isi: string, idx: number) {
@@ -228,7 +307,13 @@ export function ChatClient({
                 onSave={() => simpanCatatan(m.isi, i)}
               />
             ) : (
-              <UserBubble key={i} isi={m.isi} inisial={inisial} />
+              <UserBubble
+                key={i}
+                isi={m.isi}
+                inisial={inisial}
+                lampiranNama={m.lampiran_nama}
+                lampiranTipe={m.lampiran_tipe}
+              />
             ),
           )}
 
@@ -252,7 +337,45 @@ export function ChatClient({
 
       {/* Input */}
       <div className="border-t border-line bg-white px-4 py-3">
+        {berkas && (
+          <div className="mx-auto mb-2 flex max-w-2xl items-center gap-2 rounded-xl bg-bg-soft px-3 py-2">
+            {berkas.type === "application/pdf" ? (
+              <FileText size={16} className="shrink-0 text-primary" />
+            ) : (
+              <ImageIcon size={16} className="shrink-0 text-primary" />
+            )}
+            <span className="min-w-0 flex-1 truncate text-sm text-ink">
+              {berkas.name}
+            </span>
+            <span className="shrink-0 text-xs text-muted">
+              {(berkas.size / 1024 / 1024).toFixed(1)} MB
+            </span>
+            <button
+              onClick={() => pilihBerkas(null)}
+              disabled={mengunggah}
+              className="grid size-6 shrink-0 place-items-center rounded-full text-muted hover:bg-white hover:text-coral"
+              aria-label="Batalkan lampiran"
+            >
+              <X size={14} />
+            </button>
+          </div>
+        )}
         <div className="mx-auto flex max-w-2xl items-end gap-2">
+          <input
+            ref={fileRef}
+            type="file"
+            accept={TIPE_BOLEH.join(",")}
+            className="hidden"
+            onChange={(e) => pilihBerkas(e.target.files?.[0] ?? null)}
+          />
+          <button
+            onClick={() => fileRef.current?.click()}
+            disabled={busy || mengunggah}
+            title="Lampirkan foto soal atau PDF"
+            className="grid size-12 shrink-0 place-items-center rounded-full border-2 border-line text-muted transition hover:border-primary hover:text-primary disabled:opacity-50"
+          >
+            <Paperclip size={20} />
+          </button>
           <textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
@@ -263,15 +386,19 @@ export function ChatClient({
               }
             }}
             rows={1}
-            placeholder="Tanyakan apa saja ke Dialektika..."
+            placeholder={
+              berkas
+                ? "Bagian mana yang bikin bingung?"
+                : "Tanyakan apa saja ke Dialektika..."
+            }
             className="max-h-32 flex-1 resize-none rounded-2xl border-2 border-line bg-bg-soft px-4 py-3 text-base outline-none focus:border-primary"
           />
           <button
             onClick={kirim}
-            disabled={busy || !input.trim()}
+            disabled={busy || mengunggah || (!input.trim() && !berkas)}
             className="grid size-12 shrink-0 place-items-center rounded-full bg-primary text-white shadow-tosca transition hover:bg-primary-press disabled:opacity-50"
           >
-            {busy ? (
+            {busy || mengunggah ? (
               <Loader2 size={20} className="animate-spin" />
             ) : (
               <Send size={20} />
@@ -279,7 +406,9 @@ export function ChatClient({
           </button>
         </div>
         <p className="mx-auto mt-2 max-w-2xl text-center text-[11px] text-muted">
-          AI bisa keliru. Tinjau informasi penting.
+          {mengunggah
+            ? "Mengunggah file..."
+            : "AI bisa keliru. Tinjau informasi penting."}
         </p>
       </div>
 
@@ -372,12 +501,36 @@ function AiBubble({
   );
 }
 
-function UserBubble({ isi, inisial }: { isi: string; inisial: string }) {
+function UserBubble({
+  isi,
+  inisial,
+  lampiranNama,
+  lampiranTipe,
+}: {
+  isi: string;
+  inisial: string;
+  lampiranNama?: string | null;
+  lampiranTipe?: string | null;
+}) {
   return (
     <div className="flex flex-row-reverse gap-2.5">
       <Avatar inisial={inisial} />
-      <div className="max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-tr-sm border border-line bg-white px-4 py-3 text-[15px] leading-relaxed text-ink">
-        {isi}
+      <div className="max-w-[85%] rounded-2xl rounded-tr-sm border border-line bg-white px-4 py-3 text-[15px] leading-relaxed text-ink">
+        {lampiranNama && (
+          <span
+            className={`inline-flex max-w-full items-center gap-1.5 rounded-lg bg-bg-soft px-2 py-1 text-xs text-muted ${
+              isi ? "mb-2" : ""
+            }`}
+          >
+            {lampiranTipe === "application/pdf" ? (
+              <FileText size={13} className="shrink-0 text-primary" />
+            ) : (
+              <ImageIcon size={13} className="shrink-0 text-primary" />
+            )}
+            <span className="truncate">{lampiranNama}</span>
+          </span>
+        )}
+        {isi && <span className="block whitespace-pre-wrap">{isi}</span>}
       </div>
     </div>
   );

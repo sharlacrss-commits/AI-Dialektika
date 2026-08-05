@@ -98,57 +98,12 @@ Tulis rumus dengan notasi sederhana yang langsung terbaca:
   x^2 untuk kuadrat, a/b untuk pecahan, akar(16) untuk akar
 DILARANG memakai LaTeX: jangan menulis $...$, \\frac, \\sqrt, \\times.`;
 
-// ---------------------------------------------------------------
-//  Persona pembanding untuk KELOMPOK KONTROL
-// ---------------------------------------------------------------
-//  Proposal membandingkan "AI Dialektika" (eksperimen) dengan "AI
-//  konvensional" (kontrol). Kalau kelompok kontrol memakai ChatGPT di
-//  luar aplikasi, log chatnya tidak bisa dikumpulkan dan variabel lain
-//  (model, bahasa, materi) ikut berbeda — selisih skor jadi tidak murni
-//  berasal dari ada/tidaknya gesekan kognitif.
-//
-//  Persona di bawah membuat kelompok kontrol memakai aplikasi yang sama
-//  dengan model yang sama, hanya persona AI-nya yang diganti jadi
-//  penjawab langsung. Dipakai otomatis kalau profiles.kelompok = 'kontrol'.
-//
-//  Kalau penelitian tetap memakai ChatGPT untuk kelompok kontrol, cukup
-//  jangan buatkan akun untuk siswa kontrol — kode ini tidak akan terpakai.
-export const SYSTEM_KONVENSIONAL = `Kamu adalah asisten belajar untuk siswa SMA di Indonesia.
-Materi: Biologi, Kimia, Matematika, dan studi kasus.
-Bahasa: Indonesia yang jelas, sopan, dan mudah dipahami.
-
-TUGASMU:
-Menjawab pertanyaan siswa selengkap dan sejelas mungkin.
-
-ATURAN:
-1. Jawab langsung pertanyaannya. Jangan balik bertanya kecuali pertanyaan
-   siswa benar-benar tidak jelas.
-2. Berikan jawaban akhir beserta langkah pengerjaannya bila ada.
-3. Jawaban ringkas dan mudah dibaca di HP.
-4. Tetap pada materi belajar.
-
-MENULIS RUMUS (penting):
-Siswa membaca dari HP dan aplikasi ini TIDAK bisa menampilkan LaTeX.
-Tulis rumus dengan notasi sederhana yang langsung terbaca:
-  f(x) = (3x^2 + 5x) / (x - 1)
-  x^2 untuk kuadrat, a/b untuk pecahan, akar(16) untuk akar
-DILARANG memakai LaTeX: jangan menulis $...$, \\frac, \\sqrt, \\times.`;
-
-export type KelompokPrompt = "eksperimen" | "kontrol";
-
-export function systemDiskusi(kelompok: KelompokPrompt) {
-  return kelompok === "kontrol" ? SYSTEM_KONVENSIONAL : SYSTEM_DISKUSI;
-}
-
-export function kickoffPrompt(
-  mapel: string,
-  topik: string | null,
-  kelompok: KelompokPrompt = "eksperimen",
-) {
+// Aplikasi ini KHUSUS kelompok eksperimen. Kelompok kontrol memakai AI
+// lain (mis. ChatGPT) di luar aplikasi, sesuai proposal — jadi tidak ada
+// persona penjawab-langsung di sini. Kalau suatu saat perlu, versinya ada
+// di riwayat git commit 1759a31 (SYSTEM_KONVENSIONAL).
+export function kickoffPrompt(mapel: string, topik: string | null) {
   const t = topik ? ` dengan topik "${topik}"` : "";
-  if (kelompok === "kontrol") {
-    return `Mulai sesi belajar ${mapel}${t}. Sapa aku singkat lalu tanyakan apa yang ingin aku tanyakan.`;
-  }
   return `Mulai sesi belajar ${mapel}${t}. Sapa aku dengan hangat dan ajukan satu pertanyaan pemantik pembuka untuk memulai diskusi.`;
 }
 

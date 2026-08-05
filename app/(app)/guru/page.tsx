@@ -63,8 +63,11 @@ export default async function GuruPage() {
     };
   });
 
-  const eksperimen = rows.filter((r) => r.profil.kelompok === "eksperimen");
-  const kontrol = rows.filter((r) => r.profil.kelompok === "kontrol");
+  // Aplikasi ini khusus kelompok eksperimen, jadi daftarnya tidak lagi
+  // dipisah per kelompok. Yang lebih berguna bagi guru: berapa siswa yang
+  // benar-benar sudah memakai, dan berapa yang belum tersentuh sama sekali.
+  const sudahMulai = rows.filter((r) => r.jumlahSesi > 0).length;
+  const belumMulai = rows.length - sudahMulai;
 
   return (
     <div className="mx-auto max-w-5xl px-5 py-8 sm:px-8">
@@ -98,8 +101,8 @@ export default async function GuruPage() {
 
       <div className="mt-6 grid gap-4 sm:grid-cols-3">
         <Kartu label="Total siswa" nilai={rows.length} />
-        <Kartu label="Kelompok eksperimen" nilai={eksperimen.length} />
-        <Kartu label="Kelompok kontrol" nilai={kontrol.length} />
+        <Kartu label="Sudah mulai belajar" nilai={sudahMulai} />
+        <Kartu label="Belum pernah mulai" nilai={belumMulai} />
       </div>
 
       {rows.length === 0 ? (
@@ -108,10 +111,7 @@ export default async function GuruPage() {
           sekolah dengan ejaan yang sama.
         </p>
       ) : (
-        <>
-          <Tabel judul="Kelompok Eksperimen (pakai Dialektika)" rows={eksperimen} />
-          <Tabel judul="Kelompok Kontrol (AI penjawab biasa)" rows={kontrol} />
-        </>
+        <Tabel judul="Daftar Siswa" rows={rows} />
       )}
     </div>
   );
@@ -149,8 +149,8 @@ function Tabel({ judul, rows }: { judul: string; rows: Baris[] }) {
         <table className="w-full min-w-[46rem] text-sm">
           <thead className="bg-bg-soft text-left text-muted">
             <tr>
-              <th className="px-4 py-3 font-medium">Kode</th>
               <th className="px-4 py-3 font-medium">Nama</th>
+              <th className="px-4 py-3 font-medium">Kode</th>
               <th className="px-4 py-3 font-medium">Kelas</th>
               <th className="px-4 py-3 font-medium">Sesi</th>
               <th className="px-4 py-3 font-medium">Selesai</th>
@@ -161,15 +161,20 @@ function Tabel({ judul, rows }: { judul: string; rows: Baris[] }) {
           <tbody>
             {rows.map((r) => (
               <tr key={r.profil.id} className="border-t border-line">
+                {/* Nama didahulukan karena inilah yang dipakai guru untuk
+                    mencocokkan dengan absen kelas. Kode siswa hanya penanda
+                    pengganti nama di ekspor data penelitian. */}
                 <td className="px-4 py-3">
                   <Link
                     href={`/guru/siswa/${r.profil.id}`}
                     className="font-semibold text-primary hover:underline"
                   >
-                    {r.profil.kode_siswa ?? "—"}
+                    {r.profil.nama ?? "(tanpa nama)"}
                   </Link>
                 </td>
-                <td className="px-4 py-3 text-ink">{r.profil.nama ?? "—"}</td>
+                <td className="px-4 py-3 text-muted">
+                  {r.profil.kode_siswa ?? "—"}
+                </td>
                 <td className="px-4 py-3 text-muted">{r.profil.kelas ?? "—"}</td>
                 <td className="px-4 py-3 text-ink">{r.jumlahSesi}</td>
                 <td className="px-4 py-3 text-ink">{r.selesai}</td>

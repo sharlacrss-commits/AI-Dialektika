@@ -35,7 +35,7 @@ garis merah di VS Code hilang.
 
 1. Buat project gratis di <https://supabase.com>.
 2. Buka **SQL Editor → New query**.
-3. Jalankan empat berkas ini **berurutan** (copy isinya, paste, Run):
+3. Jalankan lima berkas ini **berurutan** (copy isinya, paste, Run):
 
    | Urutan | Berkas | Isinya |
    | --- | --- | --- |
@@ -43,6 +43,7 @@ garis merah di VS Code hilang.
    | 2 | [`supabase/002-lampiran.sql`](supabase/002-lampiran.sql) | Unggah foto soal & PDF |
    | 3 | [`supabase/003-role-guru-dan-tracking.sql`](supabase/003-role-guru-dan-tracking.sql) | Role guru, pencatatan performa AI, penilaian manual |
    | 4 | [`supabase/004-tambal-keamanan.sql`](supabase/004-tambal-keamanan.sql) | **Wajib.** Menutup celah keamanan — lihat [docs/00-KEAMANAN.md](docs/00-KEAMANAN.md) |
+   | 5 | [`supabase/005-sederhanakan-onboarding.sql`](supabase/005-sederhanakan-onboarding.sql) | Kode siswa otomatis, kelompok kontrol dihapus dari aplikasi |
 
 4. Buka **Authentication → Sign In / Providers → Email**, matikan
    **Confirm email**, klik Save. (Kalau tidak, siswa harus verifikasi email

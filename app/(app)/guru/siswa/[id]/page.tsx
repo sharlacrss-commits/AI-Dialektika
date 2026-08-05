@@ -52,8 +52,8 @@ export default async function SiswaPage({
         {siswa.nama ?? "Tanpa nama"}
       </h1>
       <p className="mt-1 text-muted">
-        {siswa.kode_siswa ?? "—"} · {siswa.kelas || "kelas belum diisi"} ·
-        kelompok <b className="capitalize">{siswa.kelompok ?? "—"}</b>
+        {siswa.kelas || "kelas belum diisi"} · kode{" "}
+        <b>{siswa.kode_siswa ?? "—"}</b>
       </p>
 
       <h2 className="mt-8 mb-3 font-display text-lg font-bold text-ink">

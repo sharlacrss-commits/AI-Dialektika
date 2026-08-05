@@ -83,8 +83,7 @@ export default async function SesiGuruPage({
         {sesi.topik ? ` · ${sesi.topik}` : ""}
       </h1>
       <p className="mt-1 text-muted">
-        {siswa?.kode_siswa ?? "—"} · kelompok{" "}
-        <b className="capitalize">{siswa?.kelompok ?? "—"}</b> ·{" "}
+        {siswa?.nama ?? "—"} · {siswa?.kelas || "kelas belum diisi"} ·{" "}
         {formatTanggal(sesi.mulai_at)}
       </p>
 

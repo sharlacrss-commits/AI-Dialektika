@@ -53,3 +53,4 @@ Dijalankan berurutan lewat Supabase SQL Editor:
 | `../supabase/002-lampiran.sql` | Unggah foto soal & PDF |
 | `../supabase/003-role-guru-dan-tracking.sql` | Role guru, pencatatan performa AI, penilaian manual |
 | `../supabase/004-tambal-keamanan.sql` | **Wajib.** Menutup celah keamanan |
+| `../supabase/005-sederhanakan-onboarding.sql` | Kode siswa otomatis, kelompok kontrol dihapus dari aplikasi |

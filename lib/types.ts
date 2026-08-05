@@ -1,3 +1,7 @@
+// Semua pengguna aplikasi ini adalah kelompok eksperimen — diisi otomatis
+// oleh trigger di database. Kelompok kontrol memakai AI lain di luar
+// aplikasi, jadi tidak pernah punya akun di sini. Nilai "kontrol" tetap
+// ada di tipe karena data lama dari uji coba awal masih memakainya.
 export type Kelompok = "eksperimen" | "kontrol";
 
 // siswa = pengguna aplikasi

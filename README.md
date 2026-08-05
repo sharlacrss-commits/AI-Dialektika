@@ -35,10 +35,20 @@ garis merah di VS Code hilang.
 
 1. Buat project gratis di <https://supabase.com>.
 2. Buka **SQL Editor → New query**.
-3. Copy seluruh isi [`supabase/schema.sql`](supabase/schema.sql), paste, klik **Run**.
+3. Jalankan empat berkas ini **berurutan** (copy isinya, paste, Run):
+
+   | Urutan | Berkas | Isinya |
+   | --- | --- | --- |
+   | 1 | [`supabase/schema.sql`](supabase/schema.sql) | Tabel dasar |
+   | 2 | [`supabase/002-lampiran.sql`](supabase/002-lampiran.sql) | Unggah foto soal & PDF |
+   | 3 | [`supabase/003-role-guru-dan-tracking.sql`](supabase/003-role-guru-dan-tracking.sql) | Role guru, pencatatan performa AI, penilaian manual |
+   | 4 | [`supabase/004-tambal-keamanan.sql`](supabase/004-tambal-keamanan.sql) | **Wajib.** Menutup celah keamanan — lihat [docs/00-KEAMANAN.md](docs/00-KEAMANAN.md) |
+
 4. Buka **Authentication → Sign In / Providers → Email**, matikan
    **Confirm email**, klik Save. (Kalau tidak, siswa harus verifikasi email
    dulu sebelum bisa masuk.)
+5. Untuk tombol **Masuk dengan Google**, ikuti
+   [docs/01-PEMBUATAN-AKUN.md](docs/01-PEMBUATAN-AKUN.md) bagian 1.
 
 ### 4. Isi kunci di `.env.local`
 
@@ -67,26 +77,52 @@ Buka <http://localhost:3000>.
 
 ---
 
-## Menjadikan akunmu admin
+## Tiga role
 
-Halaman **Pengaturan** (ganti model AI) dan endpoint `/api/export` hanya
-untuk admin. Setelah mendaftar lewat aplikasi, jalankan di SQL Editor:
+| Role | Bisa apa | Halaman |
+| --- | --- | --- |
+| `siswa` | Berdiskusi, dinilai AI, menulis catatan | `/beranda` |
+| `guru` | Melihat siswa **di sekolahnya**, membaca transkrip, menilai manual, rekap AI vs guru | `/guru` |
+| `admin` | Semua di atas lintas sekolah + performa AI + setelan model + ekspor data | `/admin/ai` |
+
+Role diberikan lewat SQL Editor setelah orangnya mendaftar sendiri:
 
 ```sql
+-- Guru. Kolom sekolah WAJIB diisi & harus sama persis dengan milik siswa.
+update public.profiles
+   set role = 'guru', sekolah = 'SMA Pradita Dirgantara'
+ where id = (select id from auth.users where email = 'guru@contoh.com');
+
+-- Admin / peneliti
 update public.profiles set role = 'admin'
-where id = (select id from auth.users where email = 'emailkamu@contoh.com');
+ where id = (select id from auth.users where email = 'emailkamu@contoh.com');
 ```
+
+Panduan lengkap: [docs/01-PEMBUATAN-AKUN.md](docs/01-PEMBUATAN-AKUN.md).
 
 ---
 
 ## Ekspor data penelitian
 
-```
-/api/export?token=<isi ADMIN_EXPORT_TOKEN>
+Login sebagai admin lalu buka `/api/export`, atau dari terminal:
+
+```bash
+curl -H "Authorization: Bearer <ADMIN_EXPORT_TOKEN>" \
+     https://<domain>/api/export -o data-riset.csv
 ```
 
-Menghasilkan CSV: kode siswa, kelompok (eksperimen/kontrol), kelas, sekolah,
-mapel, status sesi, dan seluruh skor Facione.
+Menghasilkan CSV: kode siswa, kelompok, kelas, sekolah, materi, durasi,
+jumlah pesan, skor Facione dari AI, skor manual guru, dan selisihnya.
+
+> Cara lama `?token=...` masih jalan tapi tidak dianjurkan — query string
+> tercatat di log akses dan riwayat browser.
+
+---
+
+## Dokumentasi
+
+Panduan operasional penelitian ada di [`docs/`](docs/README.md):
+keamanan, pembuatan akun, rencana penilaian, dan pengujian performa AI.
 
 ---
 

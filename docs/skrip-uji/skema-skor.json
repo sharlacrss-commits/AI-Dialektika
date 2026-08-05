@@ -1,0 +1,55 @@
+{
+  "type": "json_schema",
+  "json_schema": {
+    "name": "penilaian_dialektika",
+    "strict": true,
+    "schema": {
+      "type": "object",
+      "properties": {
+        "skor": {
+          "type": "integer"
+        },
+        "interpretasi": {
+          "type": "integer"
+        },
+        "analisis": {
+          "type": "integer"
+        },
+        "evaluasi": {
+          "type": "integer"
+        },
+        "inferensi": {
+          "type": "integer"
+        },
+        "eksplanasi": {
+          "type": "integer"
+        },
+        "regulasi_diri": {
+          "type": "integer"
+        },
+        "kelebihan": {
+          "type": "string"
+        },
+        "kekurangan": {
+          "type": "string"
+        },
+        "saran": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "skor",
+        "interpretasi",
+        "analisis",
+        "evaluasi",
+        "inferensi",
+        "eksplanasi",
+        "regulasi_diri",
+        "kelebihan",
+        "kekurangan",
+        "saran"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

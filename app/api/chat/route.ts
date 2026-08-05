@@ -3,10 +3,13 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
   sumopodChat,
+  bacaPemakaian,
   type ChatMessage,
   type BagianIsi,
+  type Pemakaian,
 } from "@/lib/sumopod";
-import { SYSTEM_DISKUSI, kickoffPrompt } from "@/lib/prompts";
+import { catatPanggilanAI, lewatBatasLaju } from "@/lib/ai-log";
+import { systemDiskusi, kickoffPrompt } from "@/lib/prompts";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -28,6 +31,15 @@ export async function POST(req: NextRequest) {
   } = await supabase.auth.getUser();
   if (!user) return new Response("Belum masuk", { status: 401 });
 
+  // Rem biaya. Tanpa ini satu siswa (atau satu skrip iseng) bisa
+  // menghabiskan saldo Sumopod untuk seluruh penelitian dalam beberapa menit.
+  if (await lewatBatasLaju(user.id)) {
+    return new Response(
+      "Terlalu cepat mengirim pesan. Tunggu sebentar ya, lalu coba lagi.",
+      { status: 429 },
+    );
+  }
+
   // Pastikan sesi milik user
   const { data: sesi } = await supabase
     .from("sessions")
@@ -38,6 +50,16 @@ export async function POST(req: NextRequest) {
   if (!sesi) return new Response("Sesi tidak ditemukan", { status: 404 });
   if (sesi.status === "selesai")
     return new Response("Sesi sudah selesai", { status: 400 });
+
+  // Kelompok penelitian menentukan persona AI-nya: 'eksperimen' memakai
+  // persona Sokratik (memantik), 'kontrol' memakai AI penjawab biasa
+  // sebagai pembanding. Lihat lib/prompts.ts.
+  const { data: profil } = await supabase
+    .from("profiles")
+    .select("kelompok")
+    .eq("id", user.id)
+    .single();
+  const kelompok = profil?.kelompok === "kontrol" ? "kontrol" : "eksperimen";
 
   // Lampiran wajib berada di folder milik user dan sesi ini. Tanpa
   // pemeriksaan ini, seseorang bisa menyuruh server membacakan file milik
@@ -84,7 +106,9 @@ export async function POST(req: NextRequest) {
     indeksBerlampiran.slice(-(MAKS_LAMPIRAN_KONTEKS - (berkas ? 1 : 0))),
   );
 
-  const messages: ChatMessage[] = [{ role: "system", content: SYSTEM_DISKUSI }];
+  const messages: ChatMessage[] = [
+    { role: "system", content: systemDiskusi(kelompok) },
+  ];
   for (const [i, m] of lalu.entries()) {
     const peran = m.peran === "user" ? "user" : "assistant";
     if (!m.lampiran_path) {
@@ -109,7 +133,10 @@ export async function POST(req: NextRequest) {
   }
 
   if (kickoff) {
-    messages.push({ role: "user", content: kickoffPrompt(sesi.mapel, sesi.topik) });
+    messages.push({
+      role: "user",
+      content: kickoffPrompt(sesi.mapel, sesi.topik, kelompok),
+    });
   } else {
     // Boleh mengirim file tanpa menulis apa pun.
     if ((!pesan || !pesan.trim()) && !berkas)
@@ -161,10 +188,32 @@ export async function POST(req: NextRequest) {
     ? [setting.chat_model, setting.fallback_model]
     : undefined;
 
-  const aiRes = await sumopodChat({ messages, stream: true, models });
+  const jumlahLampiran = indeksBerlampiran.length + (berkas ? 1 : 0);
+  const mulai = Date.now();
+  const {
+    res: aiRes,
+    model,
+    modelDiminta,
+    pakaiFallback,
+  } = await sumopodChat({ messages, stream: true, models });
+
   if (!aiRes.ok || !aiRes.body) {
     const detail = await aiRes.text().catch(() => "");
     console.error("[chat] Sumopod gagal:", aiRes.status, detail.slice(0, 500));
+    await catatPanggilanAI({
+      userId: user.id,
+      sessionId,
+      jenis: "chat",
+      modelDiminta,
+      model,
+      pakaiFallback,
+      status: "error",
+      httpStatus: aiRes.status,
+      ttfbMs: null,
+      latensiMs: Date.now() - mulai,
+      jumlahLampiran,
+      pesanError: detail,
+    });
     return new Response("AI tidak merespons. " + detail, {
       // Teruskan status aslinya supaya penyebabnya bisa dibedakan:
       // 401 = API key salah, 402 = saldo habis, 429 = kena limit.
@@ -175,8 +224,11 @@ export async function POST(req: NextRequest) {
   const encoder = new TextEncoder();
   const decoder = new TextDecoder();
   const reader = aiRes.body.getReader();
+  const uid = user.id;
   let full = "";
   let buffer = "";
+  let ttfb: number | null = null;
+  let pemakaian: Pemakaian | null = null;
 
   // Simpan jawaban AI ke DB. Dipanggil saat stream selesai normal MAUPUN
   // saat putus di tengah, supaya jawaban yang sudah terkirim ke layar
@@ -185,39 +237,54 @@ export async function POST(req: NextRequest) {
   // WAJIB pakai klien admin, bukan `supabase` di atas. Klien itu membaca
   // token login dari cookie, sedangkan insert ini terjadi SETELAH respons
   // mulai mengalir — pada titik itu Next.js sudah menutup akses cookie,
-  // sehingga permintaan terkirim tanpa identitas dan ditolak RLS. Itulah
-  // sebabnya pesan siswa (disimpan sebelum streaming) selalu masuk tapi
-  // jawaban AI tidak pernah tersimpan sama sekali.
-  // Aman melewati RLS karena kepemilikan sesi sudah diperiksa di atas.
-  // Kalau SUPABASE_SERVICE_ROLE_KEY belum diisi, jangan sampai fitur ini
-  // mati total — pakai klien biasa sebagai cadangan (mungkin gagal karena
-  // alasan di atas, tapi setidaknya tidak error).
+  // sehingga permintaan terkirim tanpa identitas dan ditolak RLS. Sejak
+  // supabase/004-tambal-keamanan.sql siswa memang tidak boleh menulis
+  // pesan berperan 'assistant', jadi jalur admin ini satu-satunya yang sah.
   const db = process.env.SUPABASE_SERVICE_ROLE_KEY
     ? createAdminClient()
     : supabase;
   if (!process.env.SUPABASE_SERVICE_ROLE_KEY)
     console.warn(
-      "[chat] SUPABASE_SERVICE_ROLE_KEY kosong — jawaban AI kemungkinan tidak tersimpan.",
+      "[chat] SUPABASE_SERVICE_ROLE_KEY kosong — jawaban AI TIDAK akan tersimpan.",
     );
 
-  let tersimpan = false;
-  async function simpanJawaban() {
-    if (tersimpan || !full.trim()) return;
-    tersimpan = true;
-    const { error } = await db.from("messages").insert({
-      session_id: sessionId,
-      peran: "assistant",
-      isi: full,
-      is_pemantik: full.includes("?"),
+  let sudahDitutup = false;
+  async function tutupPembukuan() {
+    if (sudahDitutup) return;
+    sudahDitutup = true;
+
+    if (full.trim()) {
+      const { error } = await db.from("messages").insert({
+        session_id: sessionId,
+        peran: "assistant",
+        isi: full,
+        is_pemantik: full.includes("?"),
+      });
+      if (error) console.error("[chat] gagal simpan jawaban:", error.message);
+    }
+
+    await catatPanggilanAI({
+      userId: uid,
+      sessionId,
+      jenis: "chat",
+      modelDiminta,
+      model,
+      pakaiFallback,
+      status: full.trim() ? "ok" : "error",
+      httpStatus: aiRes.status,
+      ttfbMs: ttfb,
+      latensiMs: Date.now() - mulai,
+      pemakaian,
+      jumlahLampiran,
+      pesanError: full.trim() ? null : "stream berakhir tanpa isi",
     });
-    if (error) console.error("[chat] gagal simpan jawaban:", error.message);
   }
 
   const stream = new ReadableStream({
     async pull(controller) {
       const { done, value } = await reader.read();
       if (done) {
-        await simpanJawaban();
+        await tutupPembukuan();
         controller.close();
         return;
       }
@@ -235,7 +302,7 @@ export async function POST(req: NextRequest) {
         // Selama menggantung, kolom chat siswa terkunci dan di Vercel
         // permintaan akan mati kena batas maxDuration 60 detik.
         if (data === "[DONE]") {
-          await simpanJawaban();
+          await tutupPembukuan();
           controller.close();
           return;
         }
@@ -244,12 +311,17 @@ export async function POST(req: NextRequest) {
           if (json.error) {
             // Sumopod bisa mengirim error di tengah stream (mis. kuota habis/limit)
             console.error("[chat] error di tengah stream:", json.error);
-            await simpanJawaban();
+            await tutupPembukuan();
             controller.close();
             return;
           }
+          // Chunk paling akhir membawa jumlah token dan tidak punya delta.
+          pemakaian = bacaPemakaian(json) ?? pemakaian;
           const delta = json.choices?.[0]?.delta?.content;
           if (delta) {
+            // Waktu tunggu yang benar-benar dirasakan siswa: sampai huruf
+            // pertama muncul, bukan sampai jawaban selesai.
+            if (ttfb === null) ttfb = Date.now() - mulai;
             full += delta;
             controller.enqueue(encoder.encode(delta));
           }
@@ -260,7 +332,7 @@ export async function POST(req: NextRequest) {
     },
     async cancel() {
       // Siswa menutup/berpindah halaman di tengah jawaban.
-      await simpanJawaban();
+      await tutupPembukuan();
       await reader.cancel();
     },
   });

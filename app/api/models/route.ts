@@ -11,6 +11,17 @@ export async function GET() {
   } = await supabase.auth.getUser();
   if (!user) return new Response("Belum masuk", { status: 401 });
 
+  // Khusus admin. Sebelumnya siswa mana pun yang login bisa memicu
+  // panggilan ke Sumopod lewat endpoint ini — memakai kuota API dan
+  // membocorkan katalog model yang dipakai penelitian.
+  const { data: profil } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .single();
+  if (profil?.role !== "admin")
+    return new Response("Khusus admin", { status: 403 });
+
   const res = await fetch("https://ai.sumopod.com/v1/models", {
     headers: { Authorization: `Bearer ${process.env.SUMOPOD_API_KEY}` },
   });

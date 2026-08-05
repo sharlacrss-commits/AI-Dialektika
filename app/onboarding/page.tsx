@@ -1,11 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Logo } from "@/components/Logo";
 import { Loader2, LogOut } from "lucide-react";
-import type { Kelompok } from "@/lib/types";
+import type { Kelompok, Role } from "@/lib/types";
 
 export default function OnboardingPage() {
   const router = useRouter();
@@ -19,6 +19,46 @@ export default function OnboardingPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [keluar, setKeluar] = useState(false);
+  const [role, setRole] = useState<Role>("siswa");
+  const [siap, setSiap] = useState(false);
+
+  // Ambil nama yang sudah ada supaya siswa yang masuk lewat Google tidak
+  // perlu mengetik ulang namanya. Google mengisi user_metadata.full_name,
+  // dan trigger di database menyalinnya ke profiles.nama.
+  //
+  // Sekalian membaca role: guru/admin tidak ikut penelitian, jadi form
+  // yang ditampilkan berbeda (tanpa kode siswa, kelompok, dan persetujuan).
+  useEffect(() => {
+    let batal = false;
+    (async () => {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) {
+        router.push("/masuk");
+        return;
+      }
+      const { data: profil } = await supabase
+        .from("profiles")
+        .select("nama, kelas, sekolah, role")
+        .eq("id", user.id)
+        .single();
+      if (batal) return;
+
+      const meta = user.user_metadata ?? {};
+      setNama(profil?.nama || meta.nama || meta.full_name || meta.name || "");
+      setKelas(profil?.kelas ?? "");
+      setSekolah(profil?.sekolah ?? "");
+      if (profil?.role) setRole(profil.role as Role);
+      setSiap(true);
+    })();
+    return () => {
+      batal = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const siswa = role === "siswa";
 
   // Jalan keluar dari halaman ini. WAJIB ada: selama profil belum
   // onboarded, /masuk memantulkan ke /beranda dan /beranda memantulkan
@@ -34,8 +74,14 @@ export default function OnboardingPage() {
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (!kelompok) {
+    if (siswa && !kelompok) {
       setError("Pilih kelompok dulu ya.");
+      return;
+    }
+    if (!siswa && !sekolah.trim()) {
+      setError(
+        "Nama sekolah wajib diisi. Daftar siswa yang bisa kamu pantau ditentukan dari sekolah ini.",
+      );
       return;
     }
     setLoading(true);
@@ -49,16 +95,20 @@ export default function OnboardingPage() {
       return;
     }
 
-    const isi = {
-      nama,
-      kode_siswa: kodeSiswa.trim().toUpperCase(),
-      kelas,
-      sekolah,
-      kelompok,
-      consent: true,
-      consent_at: new Date().toISOString(),
-      onboarded: true,
-    };
+    // Guru/admin tidak mengisi kode siswa, kelompok, maupun persetujuan
+    // riset — kolom itu khusus subjek penelitian.
+    const isi = siswa
+      ? {
+          nama,
+          kode_siswa: kodeSiswa.trim().toUpperCase(),
+          kelas,
+          sekolah: sekolah.trim(),
+          kelompok,
+          consent: true,
+          consent_at: new Date().toISOString(),
+          onboarded: true,
+        }
+      : { nama, kelas, sekolah: sekolah.trim(), onboarded: true };
 
     // Dua tahap, JANGAN pakai upsert. Upsert selalu meminta izin INSERT
     // walau barisnya sudah ada, dan kebijakan RLS umumnya hanya mengizinkan
@@ -103,8 +153,16 @@ export default function OnboardingPage() {
       }
     }
 
-    router.push("/beranda");
+    router.push(siswa ? "/beranda" : "/guru");
     router.refresh();
+  }
+
+  if (!siap) {
+    return (
+      <main className="grid min-h-dvh place-items-center">
+        <Loader2 size={28} className="animate-spin text-primary" />
+      </main>
+    );
   }
 
   return (
@@ -129,21 +187,25 @@ export default function OnboardingPage() {
         Lengkapi data dulu ya
       </h1>
       <p className="mt-1 text-muted">
-        Data ini dipakai untuk penelitian. Isi sesuai arahan gurumu.
+        {siswa
+          ? "Data ini dipakai untuk penelitian. Isi sesuai arahan gurumu."
+          : "Data ini menentukan siswa mana yang bisa Anda pantau."}
       </p>
 
       <form onSubmit={submit} className="mt-8 space-y-4">
         <Input label="Nama lengkap" value={nama} onChange={setNama} required />
-        <Input
-          label="Kode siswa (dari guru)"
-          placeholder="contoh: EKS-012"
-          value={kodeSiswa}
-          onChange={setKodeSiswa}
-          required
-        />
+        {siswa && (
+          <Input
+            label="Kode siswa (dari guru)"
+            placeholder="contoh: EKS-012"
+            value={kodeSiswa}
+            onChange={setKodeSiswa}
+            required
+          />
+        )}
         <div className="grid grid-cols-2 gap-4">
           <Input
-            label="Kelas"
+            label={siswa ? "Kelas" : "Kelas yang diampu"}
             placeholder="X IPA 1"
             value={kelas}
             onChange={setKelas}
@@ -153,46 +215,58 @@ export default function OnboardingPage() {
             placeholder="SMA ..."
             value={sekolah}
             onChange={setSekolah}
+            required={!siswa}
           />
         </div>
-
-        <div>
-          <label className="mb-1.5 block text-sm font-medium text-ink">
-            Kelompok (dari guru)
-          </label>
-          <div className="grid grid-cols-2 gap-3">
-            {(["eksperimen", "kontrol"] as Kelompok[]).map((k) => (
-              <button
-                key={k}
-                type="button"
-                onClick={() => setKelompok(k)}
-                className={`rounded-xl border-2 px-4 py-3 text-sm font-semibold capitalize transition ${
-                  kelompok === k
-                    ? "border-primary bg-accent-soft text-primary-press"
-                    : "border-line bg-white text-muted"
-                }`}
-              >
-                {k}
-              </button>
-            ))}
-          </div>
-          <p className="mt-1.5 text-xs text-muted">
-            Kelompok tidak bisa diubah setelah disimpan.
+        {!siswa && (
+          <p className="rounded-xl bg-bg-soft px-4 py-3 text-xs text-muted">
+            Tulis nama sekolah <b>persis sama</b> dengan yang diisi siswa.
+            Besar-kecil huruf boleh berbeda, tapi ejaannya harus sama —
+            kalau tidak, daftar siswa Anda akan kosong.
           </p>
-        </div>
+        )}
 
-        <label className="flex items-start gap-3 rounded-xl bg-bg-soft p-4 text-sm">
-          <input
-            type="checkbox"
-            checked={consent}
-            onChange={(e) => setConsent(e.target.checked)}
-            required
-            className="mt-0.5 size-5 accent-primary"
-          />
-          <span className="text-ink">
-            Saya bersedia data belajar saya digunakan untuk penelitian ini.
-          </span>
-        </label>
+        {siswa && (
+          <>
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-ink">
+                Kelompok (dari guru)
+              </label>
+              <div className="grid grid-cols-2 gap-3">
+                {(["eksperimen", "kontrol"] as Kelompok[]).map((k) => (
+                  <button
+                    key={k}
+                    type="button"
+                    onClick={() => setKelompok(k)}
+                    className={`rounded-xl border-2 px-4 py-3 text-sm font-semibold capitalize transition ${
+                      kelompok === k
+                        ? "border-primary bg-accent-soft text-primary-press"
+                        : "border-line bg-white text-muted"
+                    }`}
+                  >
+                    {k}
+                  </button>
+                ))}
+              </div>
+              <p className="mt-1.5 text-xs text-muted">
+                Kelompok tidak bisa diubah setelah disimpan.
+              </p>
+            </div>
+
+            <label className="flex items-start gap-3 rounded-xl bg-bg-soft p-4 text-sm">
+              <input
+                type="checkbox"
+                checked={consent}
+                onChange={(e) => setConsent(e.target.checked)}
+                required
+                className="mt-0.5 size-5 accent-primary"
+              />
+              <span className="text-ink">
+                Saya bersedia data belajar saya digunakan untuk penelitian ini.
+              </span>
+            </label>
+          </>
+        )}
 
         {error && (
           <p className="rounded-xl bg-coral/10 px-4 py-3 text-sm text-coral">
@@ -202,11 +276,11 @@ export default function OnboardingPage() {
 
         <button
           type="submit"
-          disabled={loading || !consent}
+          disabled={loading || (siswa && !consent)}
           className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary py-3.5 font-semibold text-white shadow-tosca transition hover:bg-primary-press disabled:opacity-60"
         >
           {loading && <Loader2 size={18} className="animate-spin" />}
-          Mulai Belajar
+          {siswa ? "Mulai Belajar" : "Masuk ke Dasbor"}
         </button>
       </form>
     </main>

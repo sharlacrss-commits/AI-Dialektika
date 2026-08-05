@@ -3,9 +3,19 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Logo } from "@/components/Logo";
-import { Home, FileText, History, TrendingUp, User } from "lucide-react";
+import {
+  Home,
+  FileText,
+  History,
+  TrendingUp,
+  User,
+  Users,
+  Activity,
+  Settings,
+} from "lucide-react";
+import type { Role } from "@/lib/types";
 
-const NAV = [
+const NAV_SISWA = [
   { href: "/beranda", label: "Beranda", icon: Home },
   { href: "/catatan", label: "Catatan", icon: FileText },
   { href: "/riwayat", label: "Riwayat", icon: History },
@@ -13,9 +23,43 @@ const NAV = [
   { href: "/profil", label: "Profil", icon: User },
 ];
 
-export function NavShell({ children }: { children: React.ReactNode }) {
+// Guru tidak butuh menu belajar (catatan, riwayat sesi pribadi). Menunya
+// diganti seluruhnya, bukan ditambahi, supaya tidak membingungkan.
+const NAV_GURU = [
+  { href: "/guru", label: "Siswa", icon: Users },
+  { href: "/guru/rekap", label: "Rekap", icon: TrendingUp },
+  { href: "/profil", label: "Profil", icon: User },
+];
+
+const NAV_ADMIN = [
+  { href: "/guru", label: "Siswa", icon: Users },
+  { href: "/guru/rekap", label: "Rekap", icon: TrendingUp },
+  { href: "/admin/ai", label: "Performa AI", icon: Activity },
+  { href: "/pengaturan", label: "Pengaturan", icon: Settings },
+  { href: "/profil", label: "Profil", icon: User },
+];
+
+function menuUntuk(role: Role) {
+  if (role === "admin") return NAV_ADMIN;
+  if (role === "guru") return NAV_GURU;
+  return NAV_SISWA;
+}
+
+export function NavShell({
+  children,
+  role = "siswa",
+}: {
+  children: React.ReactNode;
+  role?: Role;
+}) {
   const pathname = usePathname();
-  const isActive = (href: string) => pathname.startsWith(href);
+  const NAV = menuUntuk(role);
+  // Dicocokkan dari yang terpanjang, kalau tidak "/guru" ikut menyala saat
+  // membuka "/guru/rekap" dan dua menu tampak aktif bersamaan.
+  const terpanjang = NAV.map((n) => n.href)
+    .filter((h) => pathname === h || pathname.startsWith(h + "/"))
+    .sort((a, b) => b.length - a.length)[0];
+  const isActive = (href: string) => href === terpanjang;
 
   return (
     <div className="min-h-dvh lg:pl-64">

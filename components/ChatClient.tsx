@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { Markdown } from "@/components/Markdown";
+import { FeedbackJawaban } from "@/components/FeedbackJawaban";
 import type { Message, Session } from "@/lib/types";
 import {
   ArrowLeft,
@@ -192,9 +193,27 @@ export function ChatClient({
         );
         return;
       }
+      // Jawaban AI disimpan di server (siswa tidak boleh menulis pesan
+      // berperan 'assistant'), jadi id-nya baru bisa diketahui dengan
+      // membaca balik pesan terakhir. Id itu dipakai tombol penilaian
+      // jawaban di bawah gelembung chat.
+      const { data: baru } = await supabase
+        .from("messages")
+        .select("id")
+        .eq("session_id", session.id)
+        .eq("peran", "assistant")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
       setMessages((prev) => [
         ...prev,
-        { peran: "assistant", isi: acc, is_pemantik: acc.includes("?") },
+        {
+          id: baru?.id,
+          peran: "assistant",
+          isi: acc,
+          is_pemantik: acc.includes("?"),
+        },
       ]);
     } catch {
       setError("Koneksi terputus. Coba lagi.");
@@ -305,6 +324,8 @@ export function ChatClient({
                 pemantik={m.is_pemantik}
                 saved={savedIdx === i}
                 onSave={() => simpanCatatan(m.isi, i)}
+                messageId={m.id}
+                userId={userId}
               />
             ) : (
               <UserBubble
@@ -464,11 +485,15 @@ function AiBubble({
   pemantik,
   saved,
   onSave,
+  messageId,
+  userId,
 }: {
   isi: string;
   pemantik?: boolean;
   saved: boolean;
   onSave: () => void;
+  messageId?: string;
+  userId: string;
 }) {
   return (
     <div className="flex gap-2.5">
@@ -496,6 +521,7 @@ function AiBubble({
             </>
           )}
         </button>
+        <FeedbackJawaban messageId={messageId} userId={userId} />
       </div>
     </div>
   );

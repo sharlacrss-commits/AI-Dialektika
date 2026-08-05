@@ -1,6 +1,8 @@
 import { NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { sumopodChat, type ChatMessage } from "@/lib/sumopod";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { sumopodChat, bacaPemakaian, type ChatMessage } from "@/lib/sumopod";
+import { catatPanggilanAI } from "@/lib/ai-log";
 import { SYSTEM_PENILAIAN, SKEMA_SKOR, FIELD_ANGKA } from "@/lib/prompts";
 
 export const runtime = "nodejs";
@@ -22,17 +24,32 @@ export async function POST(req: NextRequest) {
 
   const { data: sesi } = await supabase
     .from("sessions")
-    .select("id, mapel, topik, user_id")
+    .select("id, mapel, topik, user_id, status")
     .eq("id", sessionId)
     .eq("user_id", user.id)
     .single();
   if (!sesi) return new Response("Sesi tidak ditemukan", { status: 404 });
+  if (sesi.status === "selesai")
+    return new Response("Sesi ini sudah dinilai.", { status: 400 });
 
   const { data: pesan } = await supabase
     .from("messages")
     .select("peran, isi, lampiran_nama")
     .eq("session_id", sessionId)
     .order("created_at", { ascending: true });
+
+  // Sesi tanpa jawaban siswa tidak layak dinilai. Tanpa penjagaan ini,
+  // siswa bisa membuka sesi lalu langsung menekan "Akhiri & Nilai", dan
+  // model tetap mengarang angka — data penelitian jadi kotor.
+  const jawabanSiswa = (pesan ?? []).filter(
+    (m) => m.peran === "user" && m.isi.trim().length > 0,
+  );
+  if (jawabanSiswa.length < 2) {
+    return new Response(
+      "Diskusinya masih terlalu singkat untuk dinilai. Jawab dulu minimal 2 pertanyaan dari Dialektika ya.",
+      { status: 400 },
+    );
+  }
 
   // Lampiran ikut dicatat di transkrip. Tanpa ini penilai tidak tahu bahwa
   // sebagian konteks (soal, atau bahkan hasil kerja siswa) ada di dalam file,
@@ -65,17 +82,47 @@ export async function POST(req: NextRequest) {
     ? [setting.chat_model, setting.fallback_model]
     : undefined;
 
-  const aiRes = await sumopodChat({
+  const mulai = Date.now();
+  const {
+    res: aiRes,
+    model,
+    modelDiminta,
+    pakaiFallback,
+  } = await sumopodChat({
     messages,
     temperature: 0.3,
     models,
     response_format: SKEMA_SKOR,
   });
+
+  // Semua jalur keluar mencatat performanya, supaya halaman /admin/ai
+  // memperlihatkan tingkat kegagalan penilaian apa adanya.
+  const catat = (
+    status: "ok" | "error",
+    extra: { pemakaian?: ReturnType<typeof bacaPemakaian>; pesanError?: string } = {},
+  ) =>
+    catatPanggilanAI({
+      userId: user.id,
+      sessionId,
+      jenis: "nilai",
+      modelDiminta,
+      model,
+      pakaiFallback,
+      status,
+      httpStatus: aiRes.status,
+      ttfbMs: null,
+      latensiMs: Date.now() - mulai,
+      pemakaian: extra.pemakaian ?? null,
+      pesanError: extra.pesanError ?? null,
+    });
+
   if (!aiRes.ok) {
     const d = await aiRes.text().catch(() => "");
+    await catat("error", { pesanError: d });
     return new Response("AI gagal menilai. " + d, { status: 502 });
   }
   const data = await aiRes.json();
+  const pemakaian = bacaPemakaian(data);
   const text: string = data.choices?.[0]?.message?.content ?? "";
 
   let parsed: Record<string, unknown> | null = null;
@@ -91,7 +138,10 @@ export async function POST(req: NextRequest) {
       }
     }
   }
-  if (!parsed) return new Response("Format nilai tidak terbaca", { status: 502 });
+  if (!parsed) {
+    await catat("error", { pemakaian, pesanError: "JSON tidak terbaca: " + text.slice(0, 200) });
+    return new Response("Format nilai tidak terbaca", { status: 502 });
+  }
 
   // Jaring pengaman: kalau model tetap memakai nama lain (mis. pernah
   // menjawab "skor_keseluruhan"), pakai padanannya.
@@ -106,6 +156,10 @@ export async function POST(req: NextRequest) {
   );
   if (hilang.length > 0) {
     console.error("[nilai] field angka tidak terbaca:", hilang, text.slice(0, 300));
+    await catat("error", {
+      pemakaian,
+      pesanError: "field hilang: " + hilang.join(", "),
+    });
     return new Response(
       "Penilaian tidak lengkap (" + hilang.join(", ") + "). Coba nilai ulang.",
       { status: 502 },
@@ -126,18 +180,34 @@ export async function POST(req: NextRequest) {
     saran: String(parsed.saran ?? ""),
   };
 
-  const { error: errScore } = await supabase
+  // WAJIB klien service-role. Sejak supabase/004-tambal-keamanan.sql siswa
+  // tidak lagi boleh menulis ke `scores` maupun mengubah status sesi —
+  // kalau tidak, siapa pun bisa mengarang skor 10 langsung dari browser
+  // dan seluruh data penelitian jadi tidak sahih.
+  if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    await catat("error", { pemakaian, pesanError: "service role key kosong" });
+    return new Response(
+      "SUPABASE_SERVICE_ROLE_KEY belum diisi, nilai tidak bisa disimpan. Hubungi admin.",
+      { status: 500 },
+    );
+  }
+  const db = createAdminClient();
+
+  const { error: errScore } = await db
     .from("scores")
     .upsert(row, { onConflict: "session_id" });
-  if (errScore)
+  if (errScore) {
+    await catat("error", { pemakaian, pesanError: errScore.message });
     return new Response("Gagal menyimpan nilai: " + errScore.message, {
       status: 500,
     });
+  }
 
-  await supabase
+  await db
     .from("sessions")
     .update({ status: "selesai", selesai_at: new Date().toISOString() })
     .eq("id", sessionId);
 
+  await catat("ok", { pemakaian });
   return Response.json({ ok: true, skor: row.skor });
 }

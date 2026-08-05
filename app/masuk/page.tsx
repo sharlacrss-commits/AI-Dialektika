@@ -1,21 +1,57 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import Image from "next/image";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Logo } from "@/components/Logo";
 import { Mail, Lock, User, Zap, MessagesSquare, Loader2 } from "lucide-react";
 
 export default function MasukPage() {
+  // useSearchParams butuh Suspense saat halaman dirender statis oleh Next.
+  return (
+    <Suspense fallback={null}>
+      <FormMasuk />
+    </Suspense>
+  );
+}
+
+function FormMasuk() {
   const router = useRouter();
+  const params = useSearchParams();
   const supabase = createClient();
   const [mode, setMode] = useState<"masuk" | "daftar">("masuk");
   const [nama, setNama] = useState("");
   const [email, setEmail] = useState("");
   const [sandi, setSandi] = useState("");
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [google, setGoogle] = useState(false);
+  // Galat dari /auth/callback (mis. siswa membatalkan izin Google).
+  const [error, setError] = useState<string | null>(params.get("galat"));
+
+  // Login Google. Alurnya: browser -> Google -> /auth/callback -> /beranda.
+  // redirectTo WAJIB memakai origin saat ini supaya localhost dan produksi
+  // sama-sama jalan tanpa mengubah kode.
+  async function masukGoogle() {
+    setGoogle(true);
+    setError(null);
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: {
+        redirectTo: `${window.location.origin}/auth/callback?next=/beranda`,
+      },
+    });
+    if (error) {
+      setError(
+        "Gagal membuka login Google: " +
+          error.message +
+          ". Pastikan provider Google sudah aktif di Supabase.",
+      );
+      setGoogle(false);
+    }
+    // Kalau berhasil, browser berpindah ke Google — tidak ada yang perlu
+    // dikerjakan lagi di sini.
+  }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -107,7 +143,27 @@ export default function MasukPage() {
             Teman belajar yang mengajakmu berpikir.
           </p>
 
-          <form onSubmit={submit} className="mt-8 space-y-4">
+          <button
+            type="button"
+            onClick={masukGoogle}
+            disabled={google || loading}
+            className="mt-8 flex w-full items-center justify-center gap-3 rounded-xl border-2 border-line bg-white py-3.5 font-semibold text-ink transition hover:bg-bg-soft disabled:opacity-60"
+          >
+            {google ? (
+              <Loader2 size={18} className="animate-spin" />
+            ) : (
+              <LogoGoogle />
+            )}
+            Masuk dengan Google
+          </button>
+
+          <div className="my-6 flex items-center gap-3">
+            <span className="h-px flex-1 bg-line" />
+            <span className="text-xs text-muted">atau pakai email</span>
+            <span className="h-px flex-1 bg-line" />
+          </div>
+
+          <form onSubmit={submit} className="space-y-4">
             {mode === "daftar" && (
               <Field
                 icon={<User size={18} />}
@@ -178,6 +234,31 @@ export default function MasukPage() {
         </div>
       </div>
     </main>
+  );
+}
+
+// Logo Google resmi (empat warna). Dibuat inline supaya tidak menambah
+// permintaan gambar dan tetap tajam di layar HP.
+function LogoGoogle() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true">
+      <path
+        fill="#4285F4"
+        d="M45.1 24.5c0-1.6-.1-2.7-.4-3.9H24v7.1h12.1c-.2 1.9-1.6 4.7-4.5 6.6l6.9 5.3c4.1-3.8 6.6-9.3 6.6-15.1z"
+      />
+      <path
+        fill="#34A853"
+        d="M24 46c5.9 0 10.9-2 14.5-5.3l-6.9-5.3c-1.9 1.3-4.3 2.2-7.6 2.2-5.8 0-10.7-3.8-12.5-9.1l-7.1 5.5C8.1 41.1 15.4 46 24 46z"
+      />
+      <path
+        fill="#FBBC05"
+        d="M11.5 28.5c-.5-1.4-.7-2.9-.7-4.5s.3-3.1.7-4.5l-7.1-5.5C2.9 17.1 2 20.4 2 24s.9 6.9 2.4 10l7.1-5.5z"
+      />
+      <path
+        fill="#EA4335"
+        d="M24 10.6c3.3 0 5.5 1.4 6.8 2.6l6.1-5.9C33.2 3.9 29.9 2 24 2 15.4 2 8.1 6.9 4.4 14l7.1 5.5c1.8-5.3 6.7-8.9 12.5-8.9z"
+      />
+    </svg>
   );
 }
 

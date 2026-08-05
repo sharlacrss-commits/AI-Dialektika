@@ -54,6 +54,9 @@ function inline(teks: string, kunci: string): ReactNode[] {
 const POIN = /^\s*[-*]\s+/;
 const NOMOR = /^\s*\d+[.)]\s+/;
 const JUDUL = /^(#{1,6})\s+(.*)$/;
+// Garis pemisah. Diperiksa SEBELUM POIN, kalau tidak "---" terbaca sebagai
+// butir daftar kosong dan muncul di layar sebagai teks "---" begitu saja.
+const GARIS = /^\s*([-*_])\s*\1\s*\1[\s\-*_]*$/;
 
 export function Markdown({ teks }: { teks: string }) {
   const baris = teks.split("\n");
@@ -76,6 +79,13 @@ export function Markdown({ teks }: { teks: string }) {
           {inline(judul[2], `j${k}`)}
         </p>,
       );
+      k++;
+      i++;
+      continue;
+    }
+
+    if (GARIS.test(b)) {
+      blok.push(<hr key={k} className="my-3 border-t border-current/15" />);
       k++;
       i++;
       continue;
@@ -122,7 +132,8 @@ export function Markdown({ teks }: { teks: string }) {
       baris[i].trim() &&
       !POIN.test(baris[i]) &&
       !NOMOR.test(baris[i]) &&
-      !JUDUL.test(baris[i])
+      !JUDUL.test(baris[i]) &&
+      !GARIS.test(baris[i])
     ) {
       para.push(baris[i]);
       i++;

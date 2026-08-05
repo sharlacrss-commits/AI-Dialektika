@@ -5,16 +5,14 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Logo } from "@/components/Logo";
 import { Loader2, LogOut } from "lucide-react";
-import type { Kelompok, Role } from "@/lib/types";
+import type { Role } from "@/lib/types";
 
 export default function OnboardingPage() {
   const router = useRouter();
   const supabase = createClient();
   const [nama, setNama] = useState("");
-  const [kodeSiswa, setKodeSiswa] = useState("");
   const [kelas, setKelas] = useState("");
   const [sekolah, setSekolah] = useState("");
-  const [kelompok, setKelompok] = useState<Kelompok | "">("");
   const [consent, setConsent] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -74,10 +72,6 @@ export default function OnboardingPage() {
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (siswa && !kelompok) {
-      setError("Pilih kelompok dulu ya.");
-      return;
-    }
     if (!siswa && !sekolah.trim()) {
       setError(
         "Nama sekolah wajib diisi. Daftar siswa yang bisa kamu pantau ditentukan dari sekolah ini.",
@@ -95,15 +89,17 @@ export default function OnboardingPage() {
       return;
     }
 
-    // Guru/admin tidak mengisi kode siswa, kelompok, maupun persetujuan
-    // riset — kolom itu khusus subjek penelitian.
+    // Kode siswa dan kelompok TIDAK dikirim dari sini. Keduanya diisi
+    // otomatis oleh trigger di database (supabase/005-sederhanakan-onboarding.sql):
+    // kode dipakai untuk menyamarkan identitas di ekspor penelitian, dan
+    // semua pengguna aplikasi ini termasuk kelompok eksperimen.
+    //
+    // Guru/admin tidak mengisi persetujuan riset — itu khusus subjek penelitian.
     const isi = siswa
       ? {
           nama,
-          kode_siswa: kodeSiswa.trim().toUpperCase(),
           kelas,
           sekolah: sekolah.trim(),
-          kelompok,
           consent: true,
           consent_at: new Date().toISOString(),
           onboarded: true,
@@ -123,11 +119,7 @@ export default function OnboardingPage() {
       .select("id");
 
     if (errUpdate) {
-      setError(
-        errUpdate.code === "23505"
-          ? "Kode siswa itu sudah dipakai. Pakai kode lain."
-          : "Gagal menyimpan: " + errUpdate.message,
-      );
+      setError("Gagal menyimpan: " + errUpdate.message);
       setLoading(false);
       return;
     }
@@ -141,12 +133,10 @@ export default function OnboardingPage() {
         .insert({ id: user.id, ...isi });
       if (errInsert) {
         setError(
-          errInsert.code === "23505"
-            ? "Kode siswa itu sudah dipakai. Pakai kode lain."
-            : "Profil belum dibuat di database. Minta admin menjalankan " +
-                "supabase/schema.sql di Supabase SQL Editor. (" +
-                errInsert.message +
-                ")",
+          "Profil belum dibuat di database. Minta admin menjalankan " +
+            "supabase/schema.sql di Supabase SQL Editor. (" +
+            errInsert.message +
+            ")",
         );
         setLoading(false);
         return;
@@ -193,16 +183,13 @@ export default function OnboardingPage() {
       </p>
 
       <form onSubmit={submit} className="mt-8 space-y-4">
-        <Input label="Nama lengkap" value={nama} onChange={setNama} required />
-        {siswa && (
-          <Input
-            label="Kode siswa (dari guru)"
-            placeholder="contoh: EKS-012"
-            value={kodeSiswa}
-            onChange={setKodeSiswa}
-            required
-          />
-        )}
+        <Input
+          label="Nama lengkap"
+          placeholder={siswa ? "Tulis seperti di absen kelas" : undefined}
+          value={nama}
+          onChange={setNama}
+          required
+        />
         <div className="grid grid-cols-2 gap-4">
           <Input
             label={siswa ? "Kelas" : "Kelas yang diampu"}
@@ -227,45 +214,18 @@ export default function OnboardingPage() {
         )}
 
         {siswa && (
-          <>
-            <div>
-              <label className="mb-1.5 block text-sm font-medium text-ink">
-                Kelompok (dari guru)
-              </label>
-              <div className="grid grid-cols-2 gap-3">
-                {(["eksperimen", "kontrol"] as Kelompok[]).map((k) => (
-                  <button
-                    key={k}
-                    type="button"
-                    onClick={() => setKelompok(k)}
-                    className={`rounded-xl border-2 px-4 py-3 text-sm font-semibold capitalize transition ${
-                      kelompok === k
-                        ? "border-primary bg-accent-soft text-primary-press"
-                        : "border-line bg-white text-muted"
-                    }`}
-                  >
-                    {k}
-                  </button>
-                ))}
-              </div>
-              <p className="mt-1.5 text-xs text-muted">
-                Kelompok tidak bisa diubah setelah disimpan.
-              </p>
-            </div>
-
-            <label className="flex items-start gap-3 rounded-xl bg-bg-soft p-4 text-sm">
-              <input
-                type="checkbox"
-                checked={consent}
-                onChange={(e) => setConsent(e.target.checked)}
-                required
-                className="mt-0.5 size-5 accent-primary"
-              />
-              <span className="text-ink">
-                Saya bersedia data belajar saya digunakan untuk penelitian ini.
-              </span>
-            </label>
-          </>
+          <label className="flex items-start gap-3 rounded-xl bg-bg-soft p-4 text-sm">
+            <input
+              type="checkbox"
+              checked={consent}
+              onChange={(e) => setConsent(e.target.checked)}
+              required
+              className="mt-0.5 size-5 accent-primary"
+            />
+            <span className="text-ink">
+              Saya bersedia data belajar saya digunakan untuk penelitian ini.
+            </span>
+          </label>
         )}
 
         {error && (

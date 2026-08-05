@@ -9,7 +9,7 @@ import {
   type Pemakaian,
 } from "@/lib/sumopod";
 import { catatPanggilanAI, lewatBatasLaju } from "@/lib/ai-log";
-import { systemDiskusi, kickoffPrompt } from "@/lib/prompts";
+import { SYSTEM_DISKUSI, kickoffPrompt } from "@/lib/prompts";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -50,16 +50,6 @@ export async function POST(req: NextRequest) {
   if (!sesi) return new Response("Sesi tidak ditemukan", { status: 404 });
   if (sesi.status === "selesai")
     return new Response("Sesi sudah selesai", { status: 400 });
-
-  // Kelompok penelitian menentukan persona AI-nya: 'eksperimen' memakai
-  // persona Sokratik (memantik), 'kontrol' memakai AI penjawab biasa
-  // sebagai pembanding. Lihat lib/prompts.ts.
-  const { data: profil } = await supabase
-    .from("profiles")
-    .select("kelompok")
-    .eq("id", user.id)
-    .single();
-  const kelompok = profil?.kelompok === "kontrol" ? "kontrol" : "eksperimen";
 
   // Lampiran wajib berada di folder milik user dan sesi ini. Tanpa
   // pemeriksaan ini, seseorang bisa menyuruh server membacakan file milik
@@ -106,9 +96,7 @@ export async function POST(req: NextRequest) {
     indeksBerlampiran.slice(-(MAKS_LAMPIRAN_KONTEKS - (berkas ? 1 : 0))),
   );
 
-  const messages: ChatMessage[] = [
-    { role: "system", content: systemDiskusi(kelompok) },
-  ];
+  const messages: ChatMessage[] = [{ role: "system", content: SYSTEM_DISKUSI }];
   for (const [i, m] of lalu.entries()) {
     const peran = m.peran === "user" ? "user" : "assistant";
     if (!m.lampiran_path) {
@@ -135,7 +123,7 @@ export async function POST(req: NextRequest) {
   if (kickoff) {
     messages.push({
       role: "user",
-      content: kickoffPrompt(sesi.mapel, sesi.topik, kelompok),
+      content: kickoffPrompt(sesi.mapel, sesi.topik),
     });
   } else {
     // Boleh mengirim file tanpa menulis apa pun.

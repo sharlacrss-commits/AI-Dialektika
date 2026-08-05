@@ -17,8 +17,9 @@ Buka **Supabase → SQL Editor → New query**, lalu jalankan berurutan:
 | 2 | `supabase/002-lampiran.sql` | Unggah foto soal & PDF |
 | 3 | `supabase/003-role-guru-dan-tracking.sql` | Role guru, pencatatan performa AI, penilaian manual |
 | 4 | `supabase/004-tambal-keamanan.sql` | **Wajib.** Menutup celah keamanan — lihat [00-KEAMANAN.md](00-KEAMANAN.md) |
+| 5 | `supabase/005-sederhanakan-onboarding.sql` | Kode siswa otomatis, kelompok kontrol dihapus |
 
-> Berkas 3 dan 4 **sudah dijalankan** di database produksi
+> Berkas 3, 4, dan 5 **sudah dijalankan** di database produksi
 > (`hbqqojknyltjfneilcrv`) pada 5 Agustus 2026. Berkasnya tetap disimpan
 > supaya database baru (atau pemulihan cadangan) bisa disamakan.
 
@@ -115,33 +116,50 @@ kalau yang pertama tidak bisa diakses.
 
 ## 4. Membuat akun SISWA
 
-Siswa mendaftar sendiri, lalu mengisi onboarding. Yang perlu disiapkan
-guru **sebelum** hari uji coba:
+Siswa mendaftar sendiri, lalu mengisi onboarding. Formnya sengaja dibuat
+sependek mungkin — hanya **empat** isian:
 
-### a. Daftar kode siswa
+| Isian | Catatan |
+| --- | --- |
+| Nama lengkap | Tulis seperti di absen kelas, ini yang dipakai guru mencocokkan kehadiran |
+| Kelas | mis. X IPA 2 |
+| Sekolah | **Harus sama persis** dengan yang diisi guru |
+| Persetujuan riset | Wajib dicentang |
 
-Kode siswa harus **unik** dan **tidak menyebut nama asli** — ini yang
-menjaga kerahasiaan data penelitian. Pola yang dipakai:
+Siswa **tidak lagi** mengetik kode siswa maupun memilih kelompok.
+Keduanya diisi otomatis oleh database.
 
-| Kelompok | Pola | Contoh |
+### a. Kode siswa dibuat otomatis
+
+Setiap siswa yang menyelesaikan onboarding langsung mendapat kode
+berurutan: `SIS-001`, `SIS-002`, dan seterusnya. Siswa sendiri tidak
+perlu tahu kodenya.
+
+**Kenapa kodenya tetap ada padahal tidak diketik siapa pun:** ekspor data
+penelitian (`/api/export`) **sengaja tidak memuat nama asli siswa**. Kode
+inilah penggantinya, supaya berkas penelitian bisa dianalisis, dibagikan
+ke pembimbing, atau dilampirkan ke laporan tanpa membuka identitas anak
+di bawah umur.
+
+Pembagian tugasnya:
+
+| Tempat | Yang ditampilkan | Untuk apa |
 | --- | --- | --- |
-| Eksperimen | `EKS-###` | EKS-001 … EKS-030 |
-| Kontrol | `KTR-###` | KTR-001 … KTR-030 |
+| Dasbor guru `/guru` | **Nama asli** + kode | Absensi, memantau siapa yang aktif |
+| Ekspor CSV | **Kode saja** | Analisis data, lampiran laporan |
 
-Siapkan sebagai tabel di spreadsheet: **kode siswa → nama asli**.
-Simpan terpisah dari aplikasi. Inilah satu-satunya penghubung antara
-data penelitian dan identitas siswa.
+Kalau butuh memasangkan lembar pre-test/post-test (yang bernama) dengan
+data sesi (yang berkode), buka `/guru` — di situ nama dan kode berdampingan.
 
 ### b. Yang dibagikan ke siswa
 
 Cukup selembar berisi:
 
 ```
-Alamat    : https://<domain>/masuk
-Kode kamu : EKS-014
-Kelompok  : eksperimen
-Sekolah   : SMA Pradita Dirgantara     <- tulis PERSIS seperti ini
-Kelas     : X IPA 2
+Alamat  : https://<domain>/masuk
+Sekolah : SMA Pradita Dirgantara     <- tulis PERSIS seperti ini
+Kelas   : X IPA 2
+Nama    : tulis nama lengkap seperti di absen
 ```
 
 > Tulis nama sekolah dalam huruf besar-kecil yang sudah jadi, jangan
@@ -150,60 +168,55 @@ Kelas     : X IPA 2
 
 ### c. Yang otomatis dikunci sistem
 
-Setelah siswa menekan **Mulai Belajar**, tiga hal ini **tidak bisa
-diubah lagi** dari aplikasi (dijaga di sisi database):
+Setelah siswa menekan **Mulai Belajar**, hal-hal ini **tidak bisa diubah
+lagi** dari aplikasi (dijaga trigger di database):
 
-- `kelompok` — supaya siswa tidak berpindah kelompok di tengah penelitian
-- `kode_siswa` — supaya datanya tidak tertukar
-- `role` — supaya siswa tidak bisa mengangkat dirinya jadi admin
+- `role` — siswa tidak bisa mengangkat dirinya jadi admin
+- `kode_siswa` — supaya data penelitian tidak tertukar
+- `kelompok` — terkunci di `eksperimen`
+- `consent` — persetujuan yang sudah diberikan tidak hilang diam-diam
 
 Kalau ada yang salah isi, hanya bisa dibetulkan lewat SQL Editor:
 
 ```sql
-update public.profiles set kode_siswa = 'EKS-014'
+update public.profiles set kelas = 'X IPA 3'
  where id = (select id from auth.users where email = 'email-siswa@contoh.com');
 ```
 
 ---
 
-## 5. Catatan penting soal kelompok kontrol
+## 5. Kelompok kontrol
 
-Proposal menyebut kelompok kontrol memakai **AI konvensional (ChatGPT)**.
-Aplikasi ini sekarang mendukung **dua cara**, pilih salah satu dan
-konsisten:
+Aplikasi ini **khusus kelompok eksperimen**. Semua yang punya akun di
+sini otomatis tercatat sebagai `eksperimen`.
 
-**Cara A — kontrol pakai ChatGPT di luar aplikasi (sesuai proposal)**
-Jangan buatkan akun untuk siswa kontrol. Log chat kelompok kontrol
-dikumpulkan manual (tangkapan layar / ekspor ChatGPT).
-→ Kelebihan: persis seperti proposal.
-→ Kekurangan: log chat tidak seragam, dan variabel lain ikut berbeda
-   (model, bahasa, antarmuka), sehingga selisih skor tidak murni berasal
-   dari ada/tidaknya gesekan kognitif.
+Kelompok kontrol **tidak dibuatkan akun** dan bebas memakai apa pun
+selain AI Dialektika (ChatGPT, Gemini, atau cara belajar biasa), sesuai
+proposal.
 
-**Cara B — kontrol pakai aplikasi ini dengan persona penjawab biasa**
-Buatkan akun, pilih kelompok `kontrol` saat onboarding. Aplikasi otomatis
-memakai persona AI penjawab langsung (lihat `SYSTEM_KONVENSIONAL` di
-`lib/prompts.ts`), bukan persona Sokratik.
-→ Kelebihan: model, bahasa, antarmuka, dan cara penilaian identik; yang
-   berbeda **hanya** persona AI-nya. Ini yang secara metodologis paling
-   bersih untuk uji-t. Log chat kedua kelompok juga seragam.
-→ Kekurangan: menyimpang dari kalimat proposal ("ChatGPT"), jadi perlu
-   dijelaskan di laporan sebagai penyesuaian metode.
+**Konsekuensi yang perlu disadari saat menulis laporan:** karena kelompok
+kontrol memakai alat di luar aplikasi, log chat mereka tidak terkumpul
+otomatis dan variabel lain ikut berbeda (model AI, antarmuka, bahasa).
+Jadi selisih skor pre-test → post-test antara dua kelompok tidak bisa
+diklaim **murni** berasal dari ada/tidaknya gesekan kognitif — ada faktor
+lain yang tidak terkontrol. Sebutkan ini sebagai keterbatasan penelitian.
 
-**Rekomendasi: Cara B**, dan tulis di laporan bahwa "AI konvensional"
-dioperasionalkan sebagai model bahasa yang sama tanpa instruksi Sokratik,
-justru untuk mengontrol variabel pengganggu.
+Untuk memperkuat, catat juga dari kelompok kontrol:
+- alat AI apa yang mereka pakai (kuesioner singkat), dan
+- berapa lama mereka belajar,
+
+supaya paling tidak lama belajarnya bisa dibandingkan setara.
 
 ---
 
 ## 6. Ceklis H-1 uji coba
 
-- [ ] Empat berkas SQL sudah dijalankan
+- [ ] Lima berkas SQL sudah dijalankan
 - [ ] Login Google sudah diuji dari HP, bukan cuma laptop
 - [ ] Konfirmasi email sudah dimatikan di Supabase
 - [ ] 1 akun admin + 1 akun guru sudah jadi dan bisa masuk
 - [ ] Kolom `sekolah` guru sama persis dengan yang akan diisi siswa
-- [ ] Daftar kode siswa sudah dicetak/dibagikan
+- [ ] Lembar berisi alamat situs + ejaan nama sekolah sudah dibagikan
 - [ ] Saldo Sumopod dicek (lihat perkiraan biaya di
       [03-PENGUJIAN-PERFORMA-AI.md](03-PENGUJIAN-PERFORMA-AI.md))
 - [ ] Sudah mencoba satu sesi penuh sebagai siswa dari HP

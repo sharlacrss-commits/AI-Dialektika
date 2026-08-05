@@ -16,6 +16,11 @@ Aplikasi ini menghasilkan **tiga** jenis angka yang gunanya berbeda.
 Kesalahan paling umum adalah memakai lapis 2 untuk menjawab pertanyaan
 penelitian utama — padahal itu tugas lapis 1.
 
+> **Catatan cakupan.** Aplikasi ini hanya dipakai kelompok **eksperimen**.
+> Kelompok kontrol belajar dengan cara/AI lain di luar aplikasi, jadi
+> lapis 2 dan 3 di bawah hanya tersedia untuk kelompok eksperimen.
+> Perbandingan antar-kelompok sepenuhnya bersandar pada lapis 1.
+
 | Lapis | Apa | Siapa yang menilai | Dipakai untuk |
 | --- | --- | --- | --- |
 | **1. Pre-test & post-test** | Soal pilihan ganda + studi kasus, di luar aplikasi | Peneliti/guru | **Menjawab hipotesis utama** (uji-t) |
@@ -225,8 +230,9 @@ memperkuat laporan.
 - Persetujuan siswa dicatat di kolom `consent` dan `consent_at`, diambil
   saat onboarding. Untuk siswa di bawah 18 tahun, tetap perlu izin
   orang tua/wali di luar aplikasi.
-- Tabel penghubung kode siswa → nama asli disimpan **terpisah** dari
-  aplikasi dan tidak ikut diekspor.
+- Penghubung kode siswa → nama asli hanya ada di dasbor guru `/guru`,
+  yang cuma bisa dibuka guru sekolah bersangkutan dan admin. Kode
+  dibuat otomatis oleh sistem, siswa tidak perlu tahu kodenya.
 - Transkrip diskusi bisa memuat hal pribadi yang diceritakan siswa.
   Perlakukan sebagai data rahasia; kalau dikutip di laporan, samarkan.
 - Siswa berhak mundur. Cara menghapus datanya:

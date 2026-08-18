@@ -15,10 +15,32 @@ const inter = Inter({
   display: "swap",
 });
 
+const DESKRIPSI =
+  "AI tutor untuk siswa SMA yang mengajakmu berpikir, bukan sekadar memberi jawaban.";
+
 export const metadata: Metadata = {
-  title: "Dialektika - Teman Belajar Berpikir",
-  description:
-    "AI tutor untuk siswa SMA yang mengajakmu berpikir, bukan sekadar memberi jawaban.",
+  // Dipakai Next.js untuk membuat URL absolut pada tautan OG & ikon.
+  metadataBase: new URL("https://dialektika.study"),
+  title: {
+    default: "Dialektika - Teman Belajar Berpikir",
+    template: "%s | Dialektika",
+  },
+  description: DESKRIPSI,
+  applicationName: "Dialektika",
+  alternates: { canonical: "/" },
+  openGraph: {
+    type: "website",
+    siteName: "Dialektika",
+    locale: "id_ID",
+    url: "/",
+    title: "Dialektika - Teman Belajar Berpikir",
+    description: DESKRIPSI,
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Dialektika - Teman Belajar Berpikir",
+    description: DESKRIPSI,
+  },
 };
 
 export const viewport: Viewport = {

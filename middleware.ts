@@ -60,6 +60,9 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    // Rute metadata (favicon, ikon, gambar pratinjau tautan) harus tetap
+    // terbuka. Perayap WhatsApp/Google datang tanpa cookie login; kalau kena
+    // pengalihan ke /masuk, pratinjau tautan dialektika.study jadi kosong.
+    "/((?!_next/static|_next/image|favicon.ico|icon|apple-icon|opengraph-image|twitter-image|robots.txt|sitemap.xml|manifest.webmanifest|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };

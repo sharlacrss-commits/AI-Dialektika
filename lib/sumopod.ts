@@ -6,7 +6,12 @@ const SUMOPOD_URL = "https://ai.sumopod.com/v1/chat/completions";
 // Katalog Sumopod berubah cukup sering — kalau chatbot tiba-tiba diam,
 // cek dulu daftar model terbaru di https://ai.sumopod.com/v1/models
 const DEFAULT_UTAMA = "gemini/gemini-3.5-flash";
-const DEFAULT_CADANGAN = "gpt-4o-mini";
+// Cadangan sengaja dipilih dari keluarga yang SAMA dengan model utama.
+// Cadangan lintas keluarga (dulu gpt-4o-mini) kemampuannya beda: ia menolak
+// PDF dengan 400 "Invalid MIME type", jadi begitu model utama bermasalah,
+// setiap pesan siswa yang membawa PDF ikut gagal total.
+// Diuji 20 Agustus 2026: flash-lite membaca PDF dengan benar.
+const DEFAULT_CADANGAN = "gemini/gemini-3.5-flash-lite";
 
 // Dibaca saat request (bukan saat module load) supaya selalu ikut env terbaru.
 export function defaultModels() {
@@ -58,6 +63,38 @@ export type Pemakaian = {
   total_tokens?: number;
 };
 
+// Tidak semua model menerima jenis lampiran yang sama. Yang hanya menerima
+// gambar membalas 400 saat diberi PDF. Dikenali dari pesannya, bukan dari
+// daftar nama model, supaya tetap berlaku kalau katalog Sumopod berubah.
+function lampiranDitolak(status: number, detail: string) {
+  return (
+    status === 400 &&
+    /invalid mime type|only image types|unsupported (image|file|mime)/i.test(
+      detail,
+    )
+  );
+}
+
+// Buang lampiran, sisakan teksnya. Dipakai sebagai percobaan terakhir supaya
+// pesan siswa tidak hilang begitu saja hanya karena filenya tidak terbaca.
+// AI diberi tahu apa yang terjadi agar ia berterus terang, bukan mengarang
+// isi file yang tidak pernah ia lihat.
+function tanpaLampiran(messages: ChatMessage[]): ChatMessage[] {
+  return messages.map((m) => {
+    if (typeof m.content === "string") return m;
+    const teks = m.content
+      .filter((b): b is Extract<BagianIsi, { type: "text" }> => b.type === "text")
+      .map((b) => b.text);
+    const jumlah = m.content.length - teks.length;
+    if (jumlah > 0) {
+      teks.push(
+        `[Siswa melampirkan ${jumlah} file, tetapi model yang sedang dipakai tidak bisa membacanya. Katakan terus terang kamu belum bisa melihat isi file itu, lalu minta siswa menjelaskan isinya dengan kata-kata.]`,
+      );
+    }
+    return { ...m, content: teks.join("\n") };
+  });
+}
+
 // Sumopod (OpenAI-compatible) hanya menerima SATU "model" per request,
 // tidak ada fitur multi-model + route:"fallback" seperti OpenRouter.
 // Maka fallback kita lakukan manual: coba model pertama; kalau responsnya
@@ -92,8 +129,13 @@ export async function sumopodChat({
   const mulai = Date.now();
   let last: Response | null = null;
 
-  for (const [i, model] of list.entries()) {
-    const res = await fetch(SUMOPOD_URL, {
+  const adaLampiran = messages.some(
+    (m) =>
+      Array.isArray(m.content) && m.content.some((b) => b.type === "image_url"),
+  );
+
+  const kirim = (model: string, isi: ChatMessage[]) =>
+    fetch(SUMOPOD_URL, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${process.env.SUMOPOD_API_KEY}`,
@@ -101,7 +143,7 @@ export async function sumopodChat({
       },
       body: JSON.stringify({
         model,
-        messages,
+        messages: isi,
         temperature,
         stream,
         // Tanpa ini respons streaming TIDAK pernah menyertakan jumlah token,
@@ -111,6 +153,24 @@ export async function sumopodChat({
         ...(response_format ? { response_format } : {}),
       }),
     });
+
+  for (const [i, model] of list.entries()) {
+    let res = await kirim(model, messages);
+
+    // Kalau model ini menolak jenis lampirannya, coba sekali lagi tanpa
+    // lampiran. Isi pesan siswa jauh lebih berharga daripada filenya: lebih
+    // baik AI menjawab sambil mengaku tidak bisa melihat file itu, daripada
+    // siswa cuma menerima tembok merah berisi pesan galat.
+    //
+    // Body respons hanya boleh dibaca saat gagal — kalau berhasil, body-nya
+    // adalah aliran jawaban yang harus diteruskan utuh ke pemanggil.
+    if (!res.ok && adaLampiran) {
+      const detail = await res.text().catch(() => "");
+      res = lampiranDitolak(res.status, detail)
+        ? await kirim(model, tanpaLampiran(messages))
+        : new Response(detail, { status: res.status });
+    }
+
     if (res.ok) {
       return {
         res,

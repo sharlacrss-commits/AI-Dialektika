@@ -42,6 +42,15 @@ type ChatOpts = {
   temperature?: number;
   response_format?: unknown;
   models?: string[];
+  // Seberapa lama model boleh "merenung" sebelum mulai menjawab. Gemini 3.x
+  // menyalakannya penuh secara bawaan: diukur 21 Agustus 2026, satu balasan
+  // chat memakai 908 token merenung untuk 124 token jawaban, dan siswa
+  // menunggu 4,9 detik. Dengan "none" jawaban muncul dalam 1,1 detik dan
+  // mutu pertanyaan Sokratiknya setara.
+  //
+  // Dipakai berbeda per keperluan: chat mengejar responsif, penilaian akhir
+  // sesi dibiarkan merenung penuh karena hasilnya menjadi data penelitian.
+  reasoning_effort?: "none" | "low" | "medium" | "high";
 };
 
 // Selain Response, pemanggil butuh tahu model mana yang AKHIRNYA menjawab
@@ -105,6 +114,7 @@ export async function sumopodChat({
   temperature = 0.7,
   response_format,
   models,
+  reasoning_effort,
 }: ChatOpts): Promise<HasilSumopod> {
   const list = [
     ...new Set((models?.length ? models : defaultModels()).filter(Boolean)),
@@ -151,6 +161,7 @@ export async function sumopodChat({
         // Sumopod: blok "usage" dikirim di chunk terakhir sebelum [DONE].
         ...(stream ? { stream_options: { include_usage: true } } : {}),
         ...(response_format ? { response_format } : {}),
+        ...(reasoning_effort ? { reasoning_effort } : {}),
       }),
     });
 

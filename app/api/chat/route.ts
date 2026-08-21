@@ -31,9 +31,34 @@ export async function POST(req: NextRequest) {
   } = await supabase.auth.getUser();
   if (!user) return new Response("Belum masuk", { status: 401 });
 
+  // Empat pengambilan data berikut tidak saling bergantung — semuanya hanya
+  // butuh user.id dan sessionId. Dulu dijalankan berurutan, dan tiap giliran
+  // menambah satu perjalanan bolak-balik ke Supabase sebelum AI sempat
+  // dipanggil. Dijalankan bersamaan, ongkosnya tinggal sepanjang yang paling
+  // lambat saja. Urutan PEMERIKSAANNYA di bawah sengaja dijaga tetap sama.
+  const [lewatBatas, hasilSesi, hasilRiwayat, hasilSetting] = await Promise.all([
+    lewatBatasLaju(user.id),
+    supabase
+      .from("sessions")
+      .select("id, mapel, topik, status")
+      .eq("id", sessionId)
+      .eq("user_id", user.id)
+      .single(),
+    supabase
+      .from("messages")
+      .select("peran, isi, lampiran_path, lampiran_nama, lampiran_tipe")
+      .eq("session_id", sessionId)
+      .order("created_at", { ascending: true }),
+    supabase
+      .from("app_settings")
+      .select("chat_model, fallback_model")
+      .eq("id", "global")
+      .single(),
+  ]);
+
   // Rem biaya. Tanpa ini satu siswa (atau satu skrip iseng) bisa
   // menghabiskan saldo Sumopod untuk seluruh penelitian dalam beberapa menit.
-  if (await lewatBatasLaju(user.id)) {
+  if (lewatBatas) {
     return new Response(
       "Terlalu cepat mengirim pesan. Tunggu sebentar ya, lalu coba lagi.",
       { status: 429 },
@@ -41,12 +66,7 @@ export async function POST(req: NextRequest) {
   }
 
   // Pastikan sesi milik user
-  const { data: sesi } = await supabase
-    .from("sessions")
-    .select("id, mapel, topik, status")
-    .eq("id", sessionId)
-    .eq("user_id", user.id)
-    .single();
+  const sesi = hasilSesi.data;
   if (!sesi) return new Response("Sesi tidak ditemukan", { status: 404 });
   if (sesi.status === "selesai")
     return new Response("Sesi sudah selesai", { status: 400 });
@@ -65,14 +85,8 @@ export async function POST(req: NextRequest) {
   if (berkas && !berkas.path.startsWith(`${user.id}/${sessionId}/`))
     return new Response("Lampiran tidak sah", { status: 403 });
 
-  // Riwayat percakapan
-  const { data: history } = await supabase
-    .from("messages")
-    .select("peran, isi, lampiran_path, lampiran_nama, lampiran_tipe")
-    .eq("session_id", sessionId)
-    .order("created_at", { ascending: true });
-
-  const lalu = history ?? [];
+  // Riwayat percakapan (sudah diambil bersamaan di atas)
+  const lalu = hasilRiwayat.data ?? [];
 
   // Ambil isi file dari Storage lalu ubah jadi data URL. Dibaca dengan klien
   // admin karena bucket-nya privat dan kepemilikan sudah diperiksa di atas.
@@ -167,11 +181,7 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const { data: setting } = await supabase
-    .from("app_settings")
-    .select("chat_model, fallback_model")
-    .eq("id", "global")
-    .single();
+  const setting = hasilSetting.data;
   const models = setting
     ? [setting.chat_model, setting.fallback_model]
     : undefined;
@@ -183,7 +193,20 @@ export async function POST(req: NextRequest) {
     model,
     modelDiminta,
     pakaiFallback,
-  } = await sumopodChat({ messages, stream: true, models });
+  } = await sumopodChat({
+    messages,
+    stream: true,
+    models,
+    // Siswa menunggu di depan layar, jadi chat mengejar responsif. Diukur 21
+    // Agustus 2026: tanpa merenung, huruf pertama muncul 1,1 detik (dari 4,9
+    // detik) dan mutu pertanyaan Sokratiknya setara. Penilaian akhir sesi di
+    // /api/nilai SENGAJA tidak diberi batasan ini — di sana model boleh
+    // merenung penuh karena hasilnya menjadi data penelitian.
+    //
+    // Kalau ternyata jawaban terasa kurang menggali, naikkan ke "low"
+    // (terukur 2,6 detik) sebelum mengembalikannya ke bawaan.
+    reasoning_effort: "none",
+  });
 
   if (!aiRes.ok || !aiRes.body) {
     const detail = await aiRes.text().catch(() => "");
